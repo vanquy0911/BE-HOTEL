@@ -1,0 +1,309 @@
+{
+  "info": {
+    "name": "Hotel Reports API",
+    "description": "API testing for Hotel Reports system",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:5000"
+    },
+    {
+      "key": "admin_token",
+      "value": ""
+    }
+  ],
+  "item": [
+    {
+      "name": "🔐 Login Admin",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"admin@hotel.com\",\n  \"password\": \"admin123\"\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/api/users/login",
+          "host": ["{{base_url}}"],
+          "path": ["api", "users", "login"]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "📊 Dashboard Stats",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{admin_token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/reports/dashboard?period=month",
+          "host": ["{{base_url}}"],
+          "path": ["api", "reports", "dashboard"],
+          "query": [
+            {
+              "key": "period",
+              "value": "month",
+              "description": "week, month, quarter, year"
+            }
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "📊 Dashboard Stats - Week",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{admin_token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/reports/dashboard?period=week",
+          "host": ["{{base_url}}"],
+          "path": ["api", "reports", "dashboard"],
+          "query": [
+            {
+              "key": "period",
+              "value": "week"
+            }
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "📊 Dashboard Stats - Quarter",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{admin_token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/reports/dashboard?period=quarter",
+          "host": ["{{base_url}}"],
+          "path": ["api", "reports", "dashboard"],
+          "query": [
+            {
+              "key": "period",
+              "value": "quarter"
+            }
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "💰 Revenue Report",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{admin_token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/reports/revenue?period=month",
+          "host": ["{{base_url}}"],
+          "path": ["api", "reports", "revenue"],
+          "query": [
+            {
+              "key": "period",
+              "value": "month",
+              "description": "week, month, quarter, year"
+            }
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "💰 Revenue Report - Custom Date",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{admin_token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/reports/revenue?startDate=2024-01-01&endDate=2024-01-31",
+          "host": ["{{base_url}}"],
+          "path": ["api", "reports", "revenue"],
+          "query": [
+            {
+              "key": "startDate",
+              "value": "2024-01-01",
+              "description": "YYYY-MM-DD format"
+            },
+            {
+              "key": "endDate",
+              "value": "2024-01-31",
+              "description": "YYYY-MM-DD format"
+            }
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "📅 Booking Report",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{admin_token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/reports/bookings?period=month",
+          "host": ["{{base_url}}"],
+          "path": ["api", "reports", "bookings"],
+          "query": [
+            {
+              "key": "period",
+              "value": "month",
+              "description": "week, month, quarter, year"
+            }
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "🏨 Room Report",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{admin_token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/reports/rooms",
+          "host": ["{{base_url}}"],
+          "path": ["api", "reports", "rooms"]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "⭐ Review Report",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{admin_token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/reports/reviews?period=month",
+          "host": ["{{base_url}}"],
+          "path": ["api", "reports", "reviews"],
+          "query": [
+            {
+              "key": "period",
+              "value": "month",
+              "description": "week, month, quarter, year"
+            }
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "🚨 Test - No Token",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/reports/dashboard",
+          "host": ["{{base_url}}"],
+          "path": ["api", "reports", "dashboard"]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "🚨 Test - Invalid Token",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer invalid-token-123"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/reports/dashboard",
+          "host": ["{{base_url}}"],
+          "path": ["api", "reports", "dashboard"]
+        }
+      },
+      "response": []
+    }
+  ]
+}

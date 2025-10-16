@@ -6,6 +6,7 @@ import connectDB from "./config/configdb.js";
 import userRoutes from "./routes/userRoutes.js";
 import roomRoutes from "./routes/roomRoutes.js";
 import bookingRoutes from "./routes/bookingRoutes.js";
+import reportRoutes from "./routes/reportRoutes.js";
 
 // Load biến môi trường từ .env
 dotenv.config();
@@ -16,7 +17,7 @@ const PORT = process.env.PORT || 5000;
 
 // Middleware
 app.use(cors({
-  origin: "http://localhost:5173",  // domain frontend
+  origin: ["http://localhost:3000", "http://localhost:5173"],  // hỗ trợ cả 2 port
   credentials: true,               // cho phép gửi cookie/token
 }));
 
@@ -26,6 +27,7 @@ app.use(express.json()); // xử lý JSON từ body
 app.use("/api/rooms", roomRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/bookings", bookingRoutes);
+app.use("/api/reports", reportRoutes);
 // app.use("/auth", authRoutes);  
 
 // Kết nối MongoDB và chạy server
