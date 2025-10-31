@@ -34,14 +34,22 @@ export const registerUser = asyncHandler(async (req, res) => {
 export const loginUser = asyncHandler(async (req, res) => {
   const { email, password } = req.body;
 
+  console.log('🔍 Login attempt:', { email, password: password ? '***' : 'empty' });
+
   const user = await User.findOne({ email });
   if (!user) {
+    console.log('❌ User not found:', email);
     res.status(400);
     throw new Error("Tài khoản không tồn tại!");
   }
 
+  console.log('👤 User found:', { email: user.email, role: user.role, passwordHash: user.password.substring(0, 20) + '...' });
+
   const isMatch = await bcrypt.compare(password, user.password);
+  console.log('🔐 Password match:', isMatch);
+  
   if (!isMatch) {
+    console.log('❌ Password mismatch for:', email);
     res.status(401);
     throw new Error("Mật khẩu không đúng!");
   }
@@ -80,7 +88,7 @@ export const getUserById = asyncHandler(async (req, res) => {
 // Hàm cập nhật thông tin người dùng
 // @route   PUT /api/users/:id
 export const updateUser = asyncHandler(async (req, res) => {
-  const { fullName, email, password, phone } = req.body;
+  const { fullName, email, phone } = req.body;
 
   const user = await User.findById(req.params.id);
   if (!user) {
@@ -92,19 +100,48 @@ export const updateUser = asyncHandler(async (req, res) => {
   user.email = email || user.email;
   user.phone = phone || user.phone;
 
-  if (password) {
-    user.password = await bcrypt.hash(password, 10);
-  }
-
   await user.save();
   res.status(200).json({ message: "Cập nhật thành công!", user });
+});
+
+// Hàm đổi mật khẩu
+// @route   PUT /api/users/change-password
+export const changePassword = asyncHandler(async (req, res) => {
+  const { currentPassword, newPassword } = req.body;
+  const userId = req.user._id; // Lấy từ middleware verifyToken
+
+  const user = await User.findById(userId);
+  if (!user) {
+    res.status(404);
+    throw new Error("Người dùng không tồn tại!");
+  }
+
+  // Kiểm tra mật khẩu hiện tại
+  const isCurrentPasswordValid = await bcrypt.compare(currentPassword, user.password);
+  if (!isCurrentPasswordValid) {
+    res.status(400);
+    throw new Error("Mật khẩu hiện tại không đúng!");
+  }
+
+  // Cập nhật mật khẩu mới
+  user.password = await bcrypt.hash(newPassword, 10);
+  await user.save();
+
+  res.status(200).json({ message: "Đổi mật khẩu thành công!" });
 });
 
 // Lấy danh sách tất cả người dùng (admin)
 // @route   GET /api/users
 export const getAllUsers = asyncHandler(async (req, res) => {
-  const users = await User.find().select("-password");
-  res.status(200).json(users);
+  try {
+    console.log('🔍 Getting all users...');
+    const users = await User.find().select("-password");
+    console.log('✅ Found users:', users.length);
+    res.status(200).json(users);
+  } catch (error) {
+    console.error('❌ Error getting users:', error);
+    res.status(500).json({ message: "Lỗi khi lấy danh sách người dùng." });
+  }
 });
 
 // Hàm xoá người dùng
@@ -144,13 +181,23 @@ export const searchUsers = asyncHandler(async (req, res) => {
 // @route   POST /api/users/forgot-password
 export const forgotPassword = async (req, res) => {
   try {
+    console.log('🔍 Forgot password request received:', req.body);
     const { email } = req.body;
 
+    if (!email) {
+      console.log('❌ No email provided');
+      return res.status(400).json({ message: "Email là bắt buộc." });
+    }
+
     // Kiểm tra người dùng tồn tại
+    console.log('🔍 Looking for user with email:', email);
     const user = await User.findOne({ email });
     if (!user) {
+      console.log('❌ User not found:', email);
       return res.status(404).json({ message: "Email không tồn tại trong hệ thống." });
     }
+
+    console.log('✅ User found:', user.email, user.fullName);
 
     // Tạo token reset
     const resetToken = crypto.randomBytes(32).toString("hex");
@@ -160,11 +207,19 @@ export const forgotPassword = async (req, res) => {
     user.resetPasswordToken = hashedToken;
     user.resetPasswordExpire = Date.now() + 15 * 60 * 1000; // 15 phút
     await user.save();
+    console.log('✅ Reset token saved to user');
 
     // Tạo URL reset
     const resetUrl = `http://localhost:5000/api/users/reset-password/${resetToken}`;
+    console.log('🔗 Reset URL created:', resetUrl);
+
+    // Kiểm tra cấu hình email
+    console.log('🔍 Email config check:');
+    console.log('  EMAIL_USER:', process.env.EMAIL_USER ? 'Set' : 'NOT SET');
+    console.log('  EMAIL_PASS:', process.env.EMAIL_PASS ? 'Set' : 'NOT SET');
 
     // Gửi email
+    console.log('📧 Attempting to send email...');
     await sendEmail({
       to: user.email,
       subject: "Khôi phục mật khẩu - HomeBooking",
@@ -177,10 +232,19 @@ export const forgotPassword = async (req, res) => {
       `
     });
 
+    console.log('✅ Email sent successfully');
     res.status(200).json({ message: "Email khôi phục mật khẩu đã được gửi!" });
   } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: "Lỗi khi gửi email khôi phục mật khẩu." });
+    console.error('❌ Forgot password error:', error);
+    console.error('❌ Error details:', {
+      message: error.message,
+      stack: error.stack,
+      name: error.name
+    });
+    res.status(500).json({ 
+      message: "Lỗi khi gửi email khôi phục mật khẩu.",
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
   }
 };
 

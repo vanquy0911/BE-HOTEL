@@ -276,3 +276,5 @@ const revenueData = await api.get('/revenue?period=month');
 - Period mặc định là `month` nếu không được chỉ định
 - Các thống kê thay đổi (%) được tính so với kỳ trước cùng độ dài
 - Chỉ admin mới có quyền truy cập các endpoints này
+
+

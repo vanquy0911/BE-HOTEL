@@ -26,9 +26,14 @@ export const verifyToken = async (req, res, next) => {
 
 // ✅ Middleware kiểm tra quyền admin
 export const isAdmin = (req, res, next) => {
+  console.log('🔍 isAdmin - User:', req.user);
+  console.log('🔍 isAdmin - User role:', req.user?.role);
+  
   if (req.user && req.user.role === "admin") {
+    console.log('✅ isAdmin - Access granted');
     next();
   } else {
+    console.log('❌ isAdmin - Access denied');
     return res.status(403).json({ message: "Không có quyền truy cập" });
   }
 };

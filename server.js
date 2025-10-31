@@ -6,6 +6,7 @@ import connectDB from "./config/configdb.js";
 import userRoutes from "./routes/userRoutes.js";
 import roomRoutes from "./routes/roomRoutes.js";
 import bookingRoutes from "./routes/bookingRoutes.js";
+import paymentRoutes from "./routes/paymentRoutes.js";
 import reportRoutes from "./routes/reportRoutes.js";
 
 // Load biến môi trường từ .env
@@ -21,12 +22,14 @@ app.use(cors({
   credentials: true,               // cho phép gửi cookie/token
 }));
 
-app.use(express.json()); // xử lý JSON từ body
+app.use(express.json({ limit: '50mb' })); // xử lý JSON từ body với giới hạn 50MB
+app.use(express.urlencoded({ limit: '50mb', extended: true })); // xử lý form data
 
 // Routes
 app.use("/api/rooms", roomRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/bookings", bookingRoutes);
+app.use("/api/payments", paymentRoutes);
 app.use("/api/reports", reportRoutes);
 // app.use("/auth", authRoutes);  
 

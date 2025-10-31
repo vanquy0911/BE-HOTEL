@@ -35,3 +35,5 @@ router.get('/rooms', getRoomReport);
 router.get('/reviews', getReviewReport);
 
 export default router;
+
+
