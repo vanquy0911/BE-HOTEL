@@ -1,6 +1,7 @@
 {
     "type": "module",
     "dependencies": {
+        "@google/generative-ai": "^0.24.1",
         "bcryptjs": "^3.0.2",
         "cors": "^2.8.5",
         "dotenv": "^16.5.0",
@@ -14,10 +15,10 @@
     "devDependencies": {
         "nodemon": "^3.1.10"
     },
-  "scripts": {
-    "start": "nodemon server.js",
-    "create-admin": "node createAdmin.js",
-    "fix-admin": "node fixAdmin.js",
-    "seed-booking": "node seedBookingData.js"
-  }
+    "scripts": {
+        "start": "nodemon server.js",
+        "create-admin": "node createAdmin.js",
+        "fix-admin": "node fixAdmin.js",
+        "seed-booking": "node seedBookingData.js"
+    }
 }
