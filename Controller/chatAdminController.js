@@ -35,12 +35,16 @@ export const getPendingChats = asyncHandler(async (req, res) => {
           .lean();
 
         // Đếm số tin nhắn chưa đọc (từ user sau khi transfer)
+        // QUAN TRỌNG: Chỉ đếm unread khi status chưa resolved
         const transferredTime = session.transferredAt || session.createdAt;
-        const unreadCount = await ChatMessage.countDocuments({
-          sessionId: session.sessionId,
-          sender: "user",
-          timestamp: { $gt: transferredTime }
-        });
+        let unreadCount = 0;
+        if (session.status !== 'resolved') {
+          unreadCount = await ChatMessage.countDocuments({
+            sessionId: session.sessionId,
+            sender: "user",
+            timestamp: { $gt: transferredTime }
+          });
+        }
 
         return {
           ...session,

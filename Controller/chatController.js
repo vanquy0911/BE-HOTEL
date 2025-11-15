@@ -502,21 +502,34 @@ export const chatWithAI = asyncHandler(async (req, res) => {
     }
     
     // Lấy context từ session nếu có
+    // QUAN TRỌNG: Reload session để đảm bảo có data mới nhất (đặc biệt là chatType)
     let session = await ChatSession.findOne({ sessionId: currentSessionId });
     const context = session?.context || {};
     
     // Kiểm tra nếu session đang ở human mode
     // Nếu là human mode, cho phép cả admin và user gửi tin nhắn (không chặn)
     // Nếu là bot mode và user là admin, thì chặn admin chat với bot
-    if (!session || session.chatType !== 'human') {
+    // QUAN TRỌNG: Chỉ block admin khi chatType là 'bot' hoặc chưa được set (mặc định là bot)
+    // KHÔNG block admin khi chatType là 'human'
+    const isHumanMode = session && session.chatType === 'human';
+    
+    // Debug log để kiểm tra
+    if (req.user && req.user.role === "admin") {
+      console.log('🔍 chatWithAI - Admin check:', {
+        email: req.user.email,
+        sessionId: currentSessionId,
+        chatType: session?.chatType || 'undefined',
+        isHumanMode: isHumanMode
+      });
+    }
+    
+    if (!isHumanMode && req.user && req.user.role === "admin") {
       // Chỉ chặn admin khi đang chat với bot (không phải human mode)
-      if (req.user && req.user.role === "admin") {
-        console.log('🚫 chatWithAI - Blocked admin from chatting with bot:', req.user.email);
-        return res.status(403).json({
-          success: false,
-          message: "Admin không thể chat với bot. Vui lòng sử dụng Admin Chat để quản lý tin nhắn từ khách hàng."
-        });
-      }
+      console.log('🚫 chatWithAI - Blocked admin from chatting with bot:', req.user.email);
+      return res.status(403).json({
+        success: false,
+        message: "Admin không thể chat với bot. Vui lòng sử dụng Admin Chat để quản lý tin nhắn từ khách hàng."
+      });
     }
     
     // Debug: Log user info nếu có

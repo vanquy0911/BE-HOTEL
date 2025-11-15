@@ -8,7 +8,8 @@ import { registerUser,
   deleteUser,
   forgotPassword,
   resetPassword,
-  changePassword
+  changePassword,
+  getCurrentUser
 } from "../Controller/userController.js";
 import { verifyToken } from "../Middlewares/authMiddleware.js"; // middleware xác thực
 import { isAdmin } from "../Middlewares/authMiddleware.js";     // middleware kiểm tra admin
@@ -19,6 +20,7 @@ router.post("/login", loginUser);
 router.post("/forgot-password", forgotPassword);
 router.post("/reset-password/:token", resetPassword);
 router.put("/change-password", verifyToken, changePassword);
+router.get("/me", verifyToken, getCurrentUser); // Get current user profile
 router.get("/search", verifyToken, isAdmin, searchUsers);
 router.get("/", verifyToken, isAdmin, getAllUsers);
 router.put("/:id", verifyToken, updateUser);

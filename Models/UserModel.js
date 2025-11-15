@@ -4,7 +4,9 @@ import mongoose from "mongoose";
 const userSchema = new mongoose.Schema({
   fullName: {
     type: String,
-    required: true
+    required: function() {
+      return this.provider === 'local'; // Chỉ required khi đăng ký local
+    }
   },
   email: {
     type: String,
@@ -13,15 +15,35 @@ const userSchema = new mongoose.Schema({
   },
   phone: {
     type: String,
-    required: true
+    required: function() {
+      return this.provider === 'local'; // Chỉ required khi đăng ký local
+    }
   },
-  // address: {
-  //   type: String,
-  //   required: true
-  // },
   password: {
     type: String,
-    required: true
+    required: function() {
+      return this.provider === 'local'; // Chỉ required khi đăng ký local
+    }
+  },
+  // OAuth fields
+  googleId: {
+    type: String,
+    sparse: true, // Cho phép null nhưng unique nếu có
+    unique: true
+  },
+  facebookId: {
+    type: String,
+    sparse: true, // Cho phép null nhưng unique nếu có
+    unique: true
+  },
+  provider: {
+    type: String,
+    enum: ['local', 'google', 'facebook'],
+    default: 'local'
+  },
+  avatar: {
+    type: String,
+    default: null
   },
   role: {
     type: String,

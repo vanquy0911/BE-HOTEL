@@ -39,6 +39,12 @@ const ChatSessionSchema = new mongoose.Schema({
     ref: "User",
     required: false
   },
+  platform: {
+    type: String,
+    enum: ["web", "telegram"],
+    default: "web",
+    index: true
+  },
   messages: [{
     type: mongoose.Schema.Types.ObjectId,
     ref: "ChatMessage"

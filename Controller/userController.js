@@ -5,6 +5,42 @@ import asyncHandler from "express-async-handler";
 import crypto from "crypto";
 import sendEmail from "../utils/sendemail.js";
 
+// @route   GET /api/users/me
+// @desc    Get current user profile
+// @access  Private
+export const getCurrentUser = asyncHandler(async (req, res) => {
+  try {
+    const user = await User.findById(req.user._id).select("-password");
+    
+    if (!user) {
+      res.status(404);
+      throw new Error("User not found");
+    }
+
+    res.status(200).json({
+      success: true,
+      user: {
+        _id: user._id,
+        id: user._id,
+        fullName: user.fullName,
+        name: user.fullName,
+        email: user.email,
+        phone: user.phone,
+        role: user.role,
+        avatar: user.avatar,
+        provider: user.provider,
+        createdAt: user.createdAt,
+        updatedAt: user.updatedAt
+      }
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message || "Error fetching user profile"
+    });
+  }
+});
+
 // Hàm đăng ký người dùng
 // @route   POST /api/users/register
 export const registerUser = asyncHandler(async (req, res) => {
