@@ -1,0 +1,44 @@
+// BE-HOTEL/Models/VectorStoreModel.js
+import mongoose from "mongoose";
+
+const vectorStoreSchema = new mongoose.Schema({
+  chunkId: {
+    type: String,
+    required: true,
+    unique: true,
+    index: true
+  },
+  documentId: {
+    type: String,
+    required: true,
+    index: true
+  },
+  text: {
+    type: String,
+    required: true
+  },
+  embedding: {
+    type: [Number], // Array of numbers (vector)
+    required: true
+  },
+  metadata: {
+    source: String,        // File name
+    type: String,         // 'faq', 'policy', 'service', etc.
+    chunkIndex: Number,
+    createdAt: {
+      type: Date,
+      default: Date.now
+    }
+  }
+}, {
+  timestamps: true
+});
+
+// Index cho embedding search (MongoDB Atlas có vector search, nhưng local thì dùng cosine similarity)
+vectorStoreSchema.index({ documentId: 1 });
+vectorStoreSchema.index({ 'metadata.type': 1 });
+vectorStoreSchema.index({ createdAt: -1 });
+
+const VectorStore = mongoose.model("VectorStore", vectorStoreSchema);
+
+export default VectorStore;

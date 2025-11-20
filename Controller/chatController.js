@@ -3,8 +3,21 @@ import { ChatMessage, ChatSession } from "../Models/ChatModel.js";
 import Room from "../Models/RoomModel.js";
 import crypto from "crypto";
 import dotenv from "dotenv";
+import { detectLanguage, getLanguage } from "../utils/languageDetector.js";
 
 dotenv.config();
+
+// ✅ Import RAG Service
+let ragService = null;
+try {
+  const ragModule = await import("../services/ragService.js").catch(() => null);
+  if (ragModule) {
+    ragService = ragModule.default;
+    console.log("✅ RAG Service loaded");
+  }
+} catch (error) {
+  console.warn("⚠️  RAG Service not available:", error.message);
+}
 
 // Initialize Gemini AI (nếu có API key và package đã cài)
 let genAI = null;
@@ -30,7 +43,7 @@ let GoogleGenerativeAI = null;
         
         // Khởi tạo model với safety settings
         geminiModel = genAI.getGenerativeModel({ 
-          model: "gemini-pro",
+          model: "gemini-2.5-flash",
           safetySettings: [
             {
               category: HarmCategory.HARM_CATEGORY_HATE_SPEECH,
@@ -77,6 +90,15 @@ let GoogleGenerativeAI = null;
 // System prompt cho AI chatbot khách sạn
 const SYSTEM_PROMPT = `Bạn là trợ lý ảo chuyên nghiệp của Rayal Park Hotel - một khách sạn 5 sao tại Việt Nam.
 
+QUY TẮC NGÔN NGỮ QUAN TRỌNG (MANDATORY):
+- LUÔN LUÔN trả lời bằng ĐÚNG NGÔN NGỮ mà khách hàng sử dụng trong câu hỏi
+- Nếu khách hỏi bằng tiếng Anh → trả lời bằng tiếng Anh
+- Nếu khách hỏi bằng tiếng Việt → trả lời bằng tiếng Việt
+- Giữ nguyên ngôn ngữ trong suốt cuộc hội thoại
+- KHÔNG BAO GIỜ trộn lẫn 2 ngôn ngữ trong một câu trả lời
+- Nếu bạn thấy instruction "IMPORTANT: You MUST respond in English" → BẮT BUỘC trả lời bằng tiếng Anh
+- Nếu bạn thấy instruction "QUAN TRỌNG: Bạn PHẢI trả lời bằng tiếng Việt" → BẮT BUỘC trả lời bằng tiếng Việt
+
 NHIỆM VỤ CỦA BẠN:
 - Tư vấn khách hàng về dịch vụ khách sạn một cách thân thiện, chuyên nghiệp
 - Trả lời các câu hỏi về giá phòng, đặt phòng, dịch vụ
@@ -85,7 +107,7 @@ NHIỆM VỤ CỦA BẠN:
 
 THÔNG TIN KHÁCH SẠN:
 - Tên: Rayal Park Hotel
-- Địa chỉ: 123 Đường ABC, Quận 1, TP.HCM, Việt Nam
+- Địa chỉ: 123 Đường ABC, Quận 1, TP.HCM, Việt Nam~
 - Hotline: 0901 234 567
 - Email: info@rayalpark.com
 - Facebook: facebook.com/rayalparkhotel
@@ -113,13 +135,13 @@ CHÍNH SÁCH HỦY PHÒNG:
 - Không hủy (No-show): Phí 100% giá phòng
 
 QUY TẮC:
-- Trả lời bằng tiếng Việt (hoặc ngôn ngữ khách hỏi)
+- Trả lời bằng ĐÚNG NGÔN NGỮ mà khách hàng sử dụng (tiếng Việt hoặc tiếng Anh)
 - Giữ thái độ thân thiện, chuyên nghiệp
 - Nếu không biết câu trả lời, hướng dẫn khách liên hệ hotline
 - Luôn kết thúc bằng cách hỏi xem còn cần hỗ trợ gì không
 - Sử dụng emoji một cách hợp lý để tạo cảm giác thân thiện
 
-Hãy trả lời câu hỏi của khách hàng một cách tự nhiên và hữu ích.`;
+Hãy trả lời câu hỏi của khách hàng một cách tự nhiên và hữu ích bằng ĐÚNG NGÔN NGỮ mà họ sử dụng.`;
 
 // Mock AI response function (fallback khi không có Gemini API)
 const getMockAIResponse = (userMessage) => {
@@ -309,7 +331,7 @@ const searchRooms = async (criteria) => {
   }
 };
 
-// AI Response function với Gemini API và Room Search
+// ✅ AI Response function với Gemini API, Room Search VÀ RAG
 const getAIResponse = async (userMessage, context = {}, conversationHistory = []) => {
   // ✅ KIỂM TRA NỘI DUNG NHẠY CẢM TRƯỚC KHI XỬ LÝ
   const sanitized = sanitizeInput(userMessage);
@@ -331,7 +353,7 @@ const getAIResponse = async (userMessage, context = {}, conversationHistory = []
     lowerMessage.includes("phòng trống") ||
     lowerMessage.includes("phòng nào") ||
     lowerMessage.includes("có phòng") ||
-    lowerMessage.includes("cho") && (lowerMessage.includes("người") || lowerMessage.match(/\d+\s*người/)) ||
+    (lowerMessage.includes("cho") && (lowerMessage.includes("người") || lowerMessage.match(/\d+\s*người/))) ||
     lowerMessage.includes("view") || lowerMessage.includes("biển") || lowerMessage.includes("núi");
 
   let roomSearchResults = null;
@@ -346,35 +368,149 @@ const getAIResponse = async (userMessage, context = {}, conversationHistory = []
   // Nếu có Gemini API và đã được khởi tạo thành công, sử dụng nó
   if (geminiAvailable && geminiModel) {
     try {
-      // Build conversation history cho context
-      let prompt = SYSTEM_PROMPT + "\n\n";
+      // ✅ RAG: Retrieve relevant documents từ knowledge base
+      let retrievedDocs = [];
+      let ragAvailable = false;
       
-      // Thêm thông tin phòng tìm được nếu có
-      if (roomSearchResults && roomSearchResults.length > 0) {
-        prompt += "THÔNG TIN PHÒNG TÌM ĐƯỢC:\n";
-        roomSearchResults.forEach((room, index) => {
-          prompt += `${index + 1}. ${room.name} - ${room.roomType}\n`;
-          prompt += `   Giá: ${room.pricePerNight.toLocaleString('vi-VN')} VNĐ/đêm\n`;
-          prompt += `   Số người: ${room.maxOccupancy}\n`;
-          prompt += `   View: ${room.view || 'N/A'}\n`;
-          prompt += `   ID: ${room._id}\n\n`;
+      if (ragService) {
+        try {
+          await ragService.initialize();
+          console.log(`🔍 RAG: Searching for: "${userMessage}"`);
+          retrievedDocs = await ragService.retrieve(userMessage, 3);
+          
+          if (retrievedDocs && retrievedDocs.length > 0) {
+            ragAvailable = true;
+            console.log(`📚 RAG: Retrieved ${retrievedDocs.length} relevant documents`);
+            console.log(`   Top result score: ${retrievedDocs[0].score.toFixed(3)}`);
+            console.log(`   Top result source: ${retrievedDocs[0].metadata?.source || 'unknown'}`);
+            console.log(`   Top result preview: ${retrievedDocs[0].text.substring(0, 100)}...`);
+          } else {
+            console.warn('⚠️  RAG: No documents retrieved (vector store might be empty)');
+            console.warn('💡 Run: npm run ingest-kb to populate knowledge base');
+          }
+        } catch (ragError) {
+          console.error('❌ RAG retrieval failed:', ragError.message);
+          console.error('   Stack:', ragError.stack);
+          // Continue without RAG if it fails
+        }
+      } else {
+        console.warn('⚠️  RAG Service not available');
+      }
+
+      // Build prompt
+      let prompt;
+      // ✅ SỬA: Dùng language từ context (đã được update từ detectedLanguage)
+      const language = context.language || 'vi';
+      
+      // ✅ THÊM: Log để debug
+      console.log(`🔤 Current language context: ${language}`);
+      console.log(`📝 User message: "${userMessage.substring(0, 100)}..."`);
+      
+      // ✅ Labels theo ngôn ngữ
+      const userLabel = language === 'vi' ? 'Khách hàng' : 'Customer';
+      const botLabel = language === 'vi' ? 'Bạn' : 'You';
+      const historyLabel = language === 'vi' ? 'Lịch sử hội thoại' : 'Conversation history';
+      
+      // ✅ THÊM: Instruction rõ ràng về ngôn ngữ ở ĐẦU prompt
+      const languageHeader = language === 'vi'
+        ? "⚠️ QUAN TRỌNG: Bạn PHẢI trả lời bằng TIẾNG VIỆT trong toàn bộ câu trả lời này.\n\n"
+        : "⚠️ IMPORTANT: You MUST respond in ENGLISH for this entire response.\n\n";
+      
+      if (ragAvailable && retrievedDocs.length > 0) {
+        // ✅ Dùng RAG prompt với retrieved context
+        prompt = languageHeader + SYSTEM_PROMPT + "\n\n";
+        
+        // Build RAG context
+        const langLabel = language === 'vi' ? 'THÔNG TIN THAM KHẢO' : 'REFERENCE INFORMATION';
+        const langNote = language === 'vi' 
+          ? 'LƯU Ý: Sử dụng thông tin trên để trả lời câu hỏi. Nếu thông tin không có trong knowledge base, hãy nói rõ và hướng dẫn khách liên hệ hotline.'
+          : 'NOTE: Use the information above to answer the question. If the information is not in the knowledge base, please clarify and guide the customer to contact the hotline.';
+
+        prompt += `${langLabel} TỪ KNOWLEDGE BASE:\n`;
+        prompt += "=".repeat(50) + "\n";
+
+        retrievedDocs.forEach((doc, index) => {
+          prompt += `\n[Document ${index + 1}]\n`;
+          prompt += `${doc.text}\n`;
+          if (doc.metadata?.source) {
+            prompt += `${language === 'vi' ? 'Nguồn' : 'Source'}: ${doc.metadata.source}\n`;
+          }
+          prompt += "\n";
         });
-        prompt += "Bạn cần giới thiệu các phòng này cho khách và hướng dẫn họ đặt phòng. ";
-        prompt += "Nếu khách muốn đặt phòng, hãy cho biết ID phòng để họ có thể click vào link đặt phòng.\n\n";
-      } else if (isRoomSearchRequest && roomSearchResults && roomSearchResults.length === 0) {
-        prompt += "LƯU Ý: Không tìm thấy phòng nào phù hợp với yêu cầu. Hãy thông báo cho khách và đề xuất các phòng khác hoặc liên hệ trực tiếp.\n\n";
+
+        prompt += "=".repeat(50) + "\n\n";
+        prompt += `${langNote}\n\n`;
+        
+        // Thêm thông tin phòng tìm được nếu có (sau RAG context)
+        if (roomSearchResults && roomSearchResults.length > 0) {
+          const roomInfoLabel = language === 'vi' ? 'THÔNG TIN PHÒNG TÌM ĐƯỢC' : 'ROOM INFORMATION FOUND';
+          const roomGuideVi = "Bạn cần giới thiệu các phòng này cho khách và hướng dẫn họ đặt phòng. Nếu khách muốn đặt phòng, hãy cho biết ID phòng để họ có thể click vào link đặt phòng.";
+          const roomGuideEn = "You need to introduce these rooms to the customer and guide them to book. If the customer wants to book, please provide the room ID so they can click on the booking link.";
+          const roomGuide = language === 'vi' ? roomGuideVi : roomGuideEn;
+          
+          prompt += `\n\n${roomInfoLabel}:\n`;
+          roomSearchResults.forEach((room, index) => {
+            prompt += `${index + 1}. ${room.name} - ${room.roomType}\n`;
+            prompt += `   ${language === 'vi' ? 'Giá' : 'Price'}: ${room.pricePerNight.toLocaleString('vi-VN')} VND/night\n`;
+            prompt += `   ${language === 'vi' ? 'Số người' : 'Max occupancy'}: ${room.maxOccupancy}\n`;
+            prompt += `   View: ${room.view || 'N/A'}\n`;
+            prompt += `   ID: ${room._id}\n\n`;
+          });
+          prompt += `${roomGuide}\n\n`;
+        } else if (isRoomSearchRequest && roomSearchResults && roomSearchResults.length === 0) {
+          const noRoomNoteVi = "LƯU Ý: Không tìm thấy phòng nào phù hợp với yêu cầu. Hãy thông báo cho khách và đề xuất các phòng khác hoặc liên hệ trực tiếp.";
+          const noRoomNoteEn = "NOTE: No rooms found matching the request. Please inform the customer and suggest other rooms or contact directly.";
+          prompt += `\n\n${language === 'vi' ? noRoomNoteVi : noRoomNoteEn}\n\n`;
+        }
+      } else {
+        // Fallback: dùng logic cũ nếu không có RAG
+        prompt = languageHeader + SYSTEM_PROMPT + "\n\n";
+        
+        // Thêm thông tin phòng tìm được nếu có
+        if (roomSearchResults && roomSearchResults.length > 0) {
+          const roomInfoLabel = language === 'vi' ? 'THÔNG TIN PHÒNG TÌM ĐƯỢC' : 'ROOM INFORMATION FOUND';
+          const roomGuideVi = "Bạn cần giới thiệu các phòng này cho khách và hướng dẫn họ đặt phòng. Nếu khách muốn đặt phòng, hãy cho biết ID phòng để họ có thể click vào link đặt phòng.";
+          const roomGuideEn = "You need to introduce these rooms to the customer and guide them to book. If the customer wants to book, please provide the room ID so they can click on the booking link.";
+          const roomGuide = language === 'vi' ? roomGuideVi : roomGuideEn;
+          
+          prompt += `${roomInfoLabel}:\n`;
+          roomSearchResults.forEach((room, index) => {
+            prompt += `${index + 1}. ${room.name} - ${room.roomType}\n`;
+            prompt += `   ${language === 'vi' ? 'Giá' : 'Price'}: ${room.pricePerNight.toLocaleString('vi-VN')} VND/night\n`;
+            prompt += `   ${language === 'vi' ? 'Số người' : 'Max occupancy'}: ${room.maxOccupancy}\n`;
+            prompt += `   View: ${room.view || 'N/A'}\n`;
+            prompt += `   ID: ${room._id}\n\n`;
+          });
+          prompt += `${roomGuide}\n\n`;
+        } else if (isRoomSearchRequest && roomSearchResults && roomSearchResults.length === 0) {
+          const noRoomNoteVi = "LƯU Ý: Không tìm thấy phòng nào phù hợp với yêu cầu. Hãy thông báo cho khách và đề xuất các phòng khác hoặc liên hệ trực tiếp.";
+          const noRoomNoteEn = "NOTE: No rooms found matching the request. Please inform the customer and suggest other rooms or contact directly.";
+          prompt += `${language === 'vi' ? noRoomNoteVi : noRoomNoteEn}\n\n`;
+        }
       }
       
-      // Thêm lịch sử hội thoại nếu có
+      // ✅ SỬA: Thêm lịch sử hội thoại với labels đúng ngôn ngữ
       if (conversationHistory.length > 0) {
-        prompt += "Lịch sử hội thoại:\n";
+        prompt += `${historyLabel}:\n`;
         conversationHistory.slice(-6).forEach(msg => {
-          prompt += `${msg.sender === 'user' ? 'Khách hàng' : 'Bạn'}: ${msg.message}\n`;
+          prompt += `${msg.sender === 'user' ? userLabel : botLabel}: ${msg.message}\n`;
         });
         prompt += "\n";
       }
+
+      // ✅ SỬA: Đảm bảo user message được thêm vào prompt với labels đúng ngôn ngữ
+      if (!prompt.includes(`${userLabel}: ${userMessage}`) && !prompt.includes(`Customer: ${userMessage}`) && !prompt.includes(`Khách hàng: ${userMessage}`)) {
+        prompt += `${userLabel}: ${userMessage}\n${botLabel}:`;
+      }
       
-      prompt += `Khách hàng: ${userMessage}\nBạn:`;
+      // ✅ THÊM: Instruction rõ ràng về ngôn ngữ ở cuối prompt (NHẤN MẠNH)
+      const langInstruction = language === 'vi' 
+        ? "\n\n⚠️⚠️⚠️ QUAN TRỌNG: Bạn PHẢI trả lời bằng TIẾNG VIỆT. KHÔNG được trả lời bằng tiếng Anh. ⚠️⚠️⚠️"
+        : "\n\n⚠️⚠️⚠️ IMPORTANT: You MUST respond in ENGLISH. DO NOT respond in Vietnamese. ⚠️⚠️⚠️";
+      prompt += langInstruction;
+      
+      // ✅ THÊM: Log prompt để debug (chỉ log 500 ký tự đầu)
+      console.log(`📋 Prompt preview (first 500 chars): ${prompt.substring(0, 500)}...`);
       
       // Call Gemini API
       const result = await geminiModel.generateContent(prompt);
@@ -454,13 +590,18 @@ const generateSessionId = () => {
 // @access  Public (cho phép cả user và admin - admin dùng để check notification)
 export const createSession = asyncHandler(async (req, res) => {
   try {
+    const { language } = req.body; // ✅ Nhận language từ body
     
     const sessionId = generateSessionId();
     
     const session = await ChatSession.create({
       sessionId,
       userId: (req.user && req.user._id) ? req.user._id : null,
-      context: {}
+      context: {
+        platform: "web",
+        language: language || 'vi' // ✅ Lưu language vào context
+      },
+      platform: "web"
     });
     
     res.status(201).json({
@@ -481,7 +622,7 @@ export const createSession = asyncHandler(async (req, res) => {
 // @access  Public (chỉ dành cho user, admin không thể chat với bot)
 export const chatWithAI = asyncHandler(async (req, res) => {
   try {
-    const { message, sessionId } = req.body;
+    const { message, sessionId, language } = req.body; // ✅ Nhận language từ body
     
     if (!message || !message.trim()) {
       return res.status(400).json({
@@ -502,34 +643,63 @@ export const chatWithAI = asyncHandler(async (req, res) => {
     }
     
     // Lấy context từ session nếu có
-    // QUAN TRỌNG: Reload session để đảm bảo có data mới nhất (đặc biệt là chatType)
     let session = await ChatSession.findOne({ sessionId: currentSessionId });
     const context = session?.context || {};
+    
+    // ✅ AUTO-DETECT LANGUAGE từ user message nếu chưa có trong context
+    let detectedLanguage = context.language;
+    if (!detectedLanguage || (detectedLanguage !== 'vi' && detectedLanguage !== 'en')) {
+      detectedLanguage = detectLanguage(message.trim());
+      console.log(`🌐 Auto-detected language: ${detectedLanguage} from message: "${message.substring(0, 50)}..."`);
+      
+      // Update vào context và session
+      if (session) {
+        if (!session.context) {
+          session.context = {};
+        }
+        session.context.language = detectedLanguage;
+        await session.save();
+        context.language = detectedLanguage;
+      }
+    }
+    
+    // ✅ Cập nhật language nếu được gửi từ frontend (override auto-detect)
+    if (language && (language === 'vi' || language === 'en')) {
+      if (session) {
+        if (!session.context) {
+          session.context = {};
+        }
+        session.context.language = language;
+        await session.save();
+        context.language = language;
+      } else {
+        // Nếu chưa có session, tạo mới với language
+        currentSessionId = generateSessionId();
+        session = await ChatSession.create({
+          sessionId: currentSessionId,
+          userId: (req.user && req.user._id) ? req.user._id : null,
+          context: {
+            platform: "web",
+            language: language
+          },
+          platform: "web"
+        });
+        context.language = language;
+      }
+    }
     
     // Kiểm tra nếu session đang ở human mode
     // Nếu là human mode, cho phép cả admin và user gửi tin nhắn (không chặn)
     // Nếu là bot mode và user là admin, thì chặn admin chat với bot
-    // QUAN TRỌNG: Chỉ block admin khi chatType là 'bot' hoặc chưa được set (mặc định là bot)
-    // KHÔNG block admin khi chatType là 'human'
-    const isHumanMode = session && session.chatType === 'human';
-    
-    // Debug log để kiểm tra
-    if (req.user && req.user.role === "admin") {
-      console.log('🔍 chatWithAI - Admin check:', {
-        email: req.user.email,
-        sessionId: currentSessionId,
-        chatType: session?.chatType || 'undefined',
-        isHumanMode: isHumanMode
-      });
-    }
-    
-    if (!isHumanMode && req.user && req.user.role === "admin") {
+    if (!session || session.chatType !== 'human') {
       // Chỉ chặn admin khi đang chat với bot (không phải human mode)
-      console.log('🚫 chatWithAI - Blocked admin from chatting with bot:', req.user.email);
-      return res.status(403).json({
-        success: false,
-        message: "Admin không thể chat với bot. Vui lòng sử dụng Admin Chat để quản lý tin nhắn từ khách hàng."
-      });
+      if (req.user && req.user.role === "admin") {
+        console.log('🚫 chatWithAI - Blocked admin from chatting with bot:', req.user.email);
+        return res.status(403).json({
+          success: false,
+          message: "Admin không thể chat với bot. Vui lòng sử dụng Admin Chat để quản lý tin nhắn từ khách hàng."
+        });
+      }
     }
     
     // Debug: Log user info nếu có
@@ -776,6 +946,57 @@ export const linkSessionToUser = asyncHandler(async (req, res) => {
   }
 });
 
+// @route   POST /api/chat/language
+// @desc    Cập nhật language cho session
+// @access  Public (optionalVerifyToken)
+export const updateSessionLanguage = asyncHandler(async (req, res) => {
+  try {
+    const { sessionId, language } = req.body;
+
+    if (!sessionId) {
+      return res.status(400).json({
+        success: false,
+        message: "Session ID không được để trống"
+      });
+    }
+
+    if (!language || (language !== 'vi' && language !== 'en')) {
+      return res.status(400).json({
+        success: false,
+        message: "Language phải là 'vi' hoặc 'en'"
+      });
+    }
+
+    const session = await ChatSession.findOne({ sessionId });
+
+    if (!session) {
+      return res.status(404).json({
+        success: false,
+        message: "Không tìm thấy session"
+      });
+    }
+
+    // Update language trong context
+    if (!session.context) {
+      session.context = {};
+    }
+    session.context.language = language;
+    await session.save();
+
+    res.status(200).json({
+      success: true,
+      message: "Đã cập nhật language cho session",
+      data: { sessionId, language }
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "Lỗi khi cập nhật language",
+      error: error.message
+    });
+  }
+});
+
 // @route   GET /api/chat/history/:sessionId
 // @desc    Lấy lịch sử chat
 // @access  Private (hoặc Public nếu muốn)
@@ -817,3 +1038,5 @@ export const getChatHistory = asyncHandler(async (req, res) => {
   }
 });
 
+// Export getAIResponse để Telegram bot và các module khác có thể sử dụng
+export { getAIResponse, generateSessionId };

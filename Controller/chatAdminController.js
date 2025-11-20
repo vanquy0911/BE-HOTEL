@@ -7,8 +7,9 @@ import { ChatMessage, ChatSession } from "../Models/ChatModel.js";
 export const getPendingChats = asyncHandler(async (req, res) => {
   try {
     // Lấy filter từ query params (mặc định hiển thị tất cả human chats)
-    const { status } = req.query;
+    const { status, platform } = req.query;
     let statusFilter = { $in: ["active", "waiting", "resolved"] }; // Hiển thị tất cả
+    
     
     if (status === 'pending') {
       statusFilter = { $in: ["active", "waiting"] };
@@ -16,10 +17,27 @@ export const getPendingChats = asyncHandler(async (req, res) => {
       statusFilter = "resolved";
     }
     
-    const pendingSessions = await ChatSession.find({
+    // Xử lý platform filter - nếu filter là telegram nhưng model chưa có trong enum, 
+    // thì dùng context.platform hoặc không filter
+    let queryFilter = {
       chatType: "human",
       status: statusFilter
-    })
+    };
+    
+    if (platform) {
+      if (platform === 'web') {
+        queryFilter.platform = 'web';
+      } else if (platform === 'telegram') {
+        // Tìm theo context.platform hoặc platform = 'telegram' (nếu có)
+        queryFilter.$or = [
+          { platform: 'telegram' },
+          { 'context.platform': 'telegram' }
+        ];
+      }
+      // Nếu platform = 'all' hoặc không có, không thêm filter
+    }
+
+    const pendingSessions = await ChatSession.find(queryFilter)
       .populate("userId", "fullName email")
       .populate("assignedTo", "fullName email")
       .sort({ transferredAt: -1, createdAt: -1 })
@@ -35,16 +53,12 @@ export const getPendingChats = asyncHandler(async (req, res) => {
           .lean();
 
         // Đếm số tin nhắn chưa đọc (từ user sau khi transfer)
-        // QUAN TRỌNG: Chỉ đếm unread khi status chưa resolved
         const transferredTime = session.transferredAt || session.createdAt;
-        let unreadCount = 0;
-        if (session.status !== 'resolved') {
-          unreadCount = await ChatMessage.countDocuments({
-            sessionId: session.sessionId,
-            sender: "user",
-            timestamp: { $gt: transferredTime }
-          });
-        }
+        const unreadCount = await ChatMessage.countDocuments({
+          sessionId: session.sessionId,
+          sender: "user",
+          timestamp: { $gt: transferredTime }
+        });
 
         return {
           ...session,
@@ -95,6 +109,8 @@ export const getSessionDetails = asyncHandler(async (req, res) => {
       success: true,
       data: {
         session,
+        platform: session.platform, 
+        context: session.context,
         messages
       }
     });

@@ -1,5 +1,5 @@
 import express from "express";
-import { chatWithAI, getChatHistory, createSession, transferToHuman, linkSessionToUser } from "../Controller/chatController.js";
+import { chatWithAI, getChatHistory, createSession, transferToHuman, linkSessionToUser, updateSessionLanguage } from "../Controller/chatController.js";
 import { 
   getPendingChats, 
   getSessionDetails, 
@@ -19,6 +19,7 @@ router.post("/session", optionalVerifyToken, createSession);
 router.post("/", optionalVerifyToken, chatWithAI);
 router.post("/transfer-to-human", optionalVerifyToken, transferToHuman);
 router.post("/link-session", optionalVerifyToken, linkSessionToUser); // Link session với user đã đăng nhập
+router.post("/language", optionalVerifyToken, updateSessionLanguage); // Cập nhật language cho session
 router.get("/history/:sessionId", optionalVerifyToken, getChatHistory); // Public - không cần auth để user có thể xem lịch sử
 
 // Admin routes
