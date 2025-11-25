@@ -1,0 +1,42 @@
+[33mcommit 100a6bb2c1c99c3267543a4bfae906b22aeae2a9[m[33m ([m[1;36mHEAD -> [m[1;32mbackend[m[33m, [m[1;31morigin/backend[m[33m)[m
+Author: vanquy <quytan27@gmail.com>
+Date:   Thu Nov 20 12:25:44 2025 +0700
+
+    feat: thêm tính đa ngôn ngữ
+
+[33mcommit 6b0d7726875448f6162b6cf63aca261d0d2366e8[m
+Author: vanquy <quytan27@gmail.com>
+Date:   Sat Nov 15 21:35:04 2025 +0700
+
+    be
+
+[33mcommit e0f21ce2b3e9f67dbeea75f5fdbcbea93d41e361[m
+Author: nguyentrongkhang1 <khangnguyen3k@gmail.com>
+Date:   Sun Nov 9 00:28:48 2025 +0700
+
+    Add BE
+
+[33mcommit 656ec7324887208250b9e47fc6daf97de3a37496[m[33m ([m[1;31morigin/main[m[33m, [m[1;31morigin/HEAD[m[33m, [m[1;32mmain[m[33m)[m
+Author: nguyentrongkhang1 <khangnguyen3k@gmail.com>
+Date:   Fri Oct 31 11:15:23 2025 +0700
+
+     Cap Nhat BE
+
+[33mcommit 0f6a31b70532a61e53cabb1b9cf9719d07e6975a[m
+Author: nguyentrongkhang1 <khangnguyen3k@gmail.com>
+Date:   Thu Oct 16 20:49:05 2025 +0700
+
+    feat: Add Reports API system
+    
+    - Add reportController.js with 5 endpoints (dashboard, revenue, booking, room, review)
+    - Add reportRoutes.js with admin authentication
+    - Add comprehensive API documentation
+    - Add Postman collection for testing
+    - Update server.js to include report routes
+    - Fix MongoDB aggregation pipeline issues
+
+[33mcommit 5c29af4d23bea7e68079c7651b2c7ec268792bef[m
+Author: vanquy <quytan27@gmail.com>
+Date:   Wed Oct 15 17:53:51 2025 +0700
+
+    first commit

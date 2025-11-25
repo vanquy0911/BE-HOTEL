@@ -112,13 +112,13 @@ THÔNG TIN KHÁCH SẠN:
 - Email: info@rayalpark.com
 - Facebook: facebook.com/rayalparkhotel
 
-GIÁ PHÒNG:
+GIÁ PHÒNG (CHỈ KHI ĐƯỢC HỎI):
 - Phòng Đơn: 1.500.000 - 2.000.000 VNĐ/đêm
 - Phòng Đôi: 2.500.000 - 3.500.000 VNĐ/đêm
 - Phòng VIP: 4.000.000 - 5.000.000 VNĐ/đêm
 - Suite: 6.000.000+ VNĐ/đêm
 
-DỊCH VỤ:
+DỊCH VỤ (CHỈ KHI ĐƯỢC HỎI):
 - WiFi miễn phí tốc độ cao
 - Dịch vụ phòng 24/7
 - Nhà hàng đẳng cấp
@@ -128,94 +128,76 @@ DỊCH VỤ:
 - Bể bơi ngoài trời
 - Gym & Fitness
 
-CHÍNH SÁCH HỦY PHÒNG:
+CHÍNH SÁCH HỦY PHÒNG (CHỈ KHI ĐƯỢC HỎI):
 - Hủy trước 48 giờ: Miễn phí
 - Hủy trong vòng 24-48 giờ: Phí 30% giá phòng
 - Hủy trong vòng 24 giờ: Phí 50% giá phòng
 - Không hủy (No-show): Phí 100% giá phòng
 
-QUY TẮC:
-- Trả lời bằng ĐÚNG NGÔN NGỮ mà khách hàng sử dụng (tiếng Việt hoặc tiếng Anh)
+QUY TẮC TRẢ LỜI (QUAN TRỌNG):
+- TRẢ LỜI NGẮN GỌN, ĐÚNG TRỌNG TÂM - KHÔNG DÀI DÒNG
+- Trả lời trực tiếp câu hỏi, không giải thích dài dòng
+- Khi có thông tin phòng tìm được → ƯU TIÊN hiển thị phòng ngay, không giới thiệu dài
+- Chỉ nói những gì cần thiết, bỏ qua thông tin không liên quan
+- KHÔNG lặp lại thông tin đã có trong danh sách phòng
 - Giữ thái độ thân thiện, chuyên nghiệp
 - Nếu không biết câu trả lời, hướng dẫn khách liên hệ hotline
-- Luôn kết thúc bằng cách hỏi xem còn cần hỗ trợ gì không
 - Sử dụng emoji một cách hợp lý để tạo cảm giác thân thiện
 
-Hãy trả lời câu hỏi của khách hàng một cách tự nhiên và hữu ích bằng ĐÚNG NGÔN NGỮ mà họ sử dụng.`;
+Hãy trả lời câu hỏi của khách hàng một cách NGẮN GỌN, ĐÚNG TRỌNG TÂM bằng ĐÚNG NGÔN NGỮ mà họ sử dụng.`;
 
 // Mock AI response function (fallback khi không có Gemini API)
 const getMockAIResponse = (userMessage) => {
   
   const lowerMessage = userMessage.toLowerCase();
   
-  // Knowledge base về khách sạn
+  // Knowledge base về khách sạn - TRẢ LỜI NGẮN GỌN
   if (lowerMessage.includes("giá") || lowerMessage.includes("price") || lowerMessage.includes("cost")) {
-    return "Chào bạn! Giá phòng tại Rayal Park Hotel dao động từ 1.500.000 VNĐ đến 5.000.000 VNĐ mỗi đêm tùy theo loại phòng:\n\n" +
+    return "Giá phòng tại Rayal Park Hotel:\n\n" +
            "• Phòng Đơn: 1.500.000 - 2.000.000 VNĐ/đêm\n" +
            "• Phòng Đôi: 2.500.000 - 3.500.000 VNĐ/đêm\n" +
            "• Phòng VIP: 4.000.000 - 5.000.000 VNĐ/đêm\n\n" +
-           "Giá có thể thay đổi theo mùa và các chương trình khuyến mãi. Bạn có muốn tôi kiểm tra phòng trống cho ngày bạn muốn đặt không?";
+           "Bạn muốn tôi tìm phòng trống không?";
   }
   
   if (lowerMessage.includes("phòng trống") || lowerMessage.includes("available") || lowerMessage.includes("trống")) {
-    return "Tôi sẽ kiểm tra phòng trống cho bạn. Bạn vui lòng cho tôi biết:\n\n" +
-           "• Ngày nhận phòng (check-in)\n" +
-           "• Ngày trả phòng (check-out)\n" +
-           "• Số lượng khách\n\n" +
-           "Hoặc bạn có thể truy cập trang 'Xem Phòng' để xem tất cả các phòng có sẵn và đặt trực tuyến.";
+    return "Tôi sẽ tìm phòng trống cho bạn. Bạn vui lòng cho tôi biết:\n" +
+           "• Ngày nhận phòng\n" +
+           "• Ngày trả phòng\n" +
+           "• Số lượng khách";
   }
   
   if (lowerMessage.includes("hủy") || lowerMessage.includes("cancel") || lowerMessage.includes("chính sách")) {
-    return "Chính sách hủy phòng tại Rayal Park Hotel:\n\n" +
+    return "Chính sách hủy phòng:\n\n" +
            "• Hủy trước 48 giờ: Miễn phí\n" +
-           "• Hủy trong vòng 24-48 giờ: Phí 30% giá phòng\n" +
-           "• Hủy trong vòng 24 giờ: Phí 50% giá phòng\n" +
-           "• Không hủy (No-show): Phí 100% giá phòng\n\n" +
-           "Bạn có thể hủy đặt phòng trực tiếp trên website trong phần 'Đặt Phòng Của Tôi' hoặc liên hệ trực tiếp qua số điện thoại: 0901 234 567";
+           "• Hủy 24-48 giờ: Phí 30%\n" +
+           "• Hủy trong 24 giờ: Phí 50%\n" +
+           "• No-show: Phí 100%";
   }
   
   if (lowerMessage.includes("dịch vụ") || lowerMessage.includes("service") || lowerMessage.includes("tiện ích")) {
-    return "Rayal Park Hotel cung cấp các dịch vụ sau:\n\n" +
-           "✅ WiFi miễn phí tốc độ cao\n" +
-           "✅ Dịch vụ phòng 24/7\n" +
-           "✅ Nhà hàng đẳng cấp\n" +
-           "✅ Spa & Wellness\n" +
-           "✅ Hội nghị & Sự kiện\n" +
-           "✅ Đưa đón sân bay\n" +
-           "✅ Bể bơi ngoài trời\n" +
-           "✅ Gym & Fitness\n\n" +
-           "Bạn muốn biết thêm chi tiết về dịch vụ nào?";
+    return "Khách sạn có các dịch vụ: WiFi miễn phí, dịch vụ phòng 24/7, nhà hàng, spa, bể bơi, gym.\n\n" +
+           "Bạn muốn biết chi tiết dịch vụ nào?";
   }
   
   if (lowerMessage.includes("đặt phòng") || lowerMessage.includes("booking") || lowerMessage.includes("reserve")) {
-    return "Để đặt phòng, bạn có thể:\n\n" +
-           "1️⃣ Truy cập trang 'Đặt Phòng' trên website\n" +
-           "2️⃣ Chọn ngày nhận phòng và trả phòng\n" +
-           "3️⃣ Chọn loại phòng phù hợp\n" +
-           "4️⃣ Điền thông tin và thanh toán\n\n" +
-           "Hoặc bạn có thể gọi trực tiếp đến số: 0901 234 567 để được hỗ trợ đặt phòng nhanh chóng.";
+    return "Để đặt phòng, bạn có thể:\n" +
+           "1. Truy cập trang 'Đặt Phòng' trên website\n" +
+           "2. Hoặc gọi hotline: 0901 234 567";
   }
   
   if (lowerMessage.includes("chào") || lowerMessage.includes("hello") || lowerMessage.includes("xin chào") || lowerMessage.includes("hi")) {
-    return "Xin chào! Tôi là trợ lý ảo của Rayal Park Hotel. Tôi có thể giúp bạn:\n\n" +
-           "• Tư vấn về giá phòng và loại phòng\n" +
-           "• Kiểm tra phòng trống\n" +
-           "• Hướng dẫn đặt phòng\n" +
-           "• Thông tin về dịch vụ khách sạn\n" +
-           "• Chính sách hủy phòng\n\n" +
+    return "Xin chào! Tôi có thể giúp bạn:\n" +
+           "• Tư vấn giá phòng\n" +
+           "• Tìm phòng trống\n" +
+           "• Hướng dẫn đặt phòng\n\n" +
            "Bạn cần hỗ trợ gì? 😊";
   }
   
-  // Default response
-  return "Cảm ơn bạn đã liên hệ! Tôi có thể giúp bạn về:\n\n" +
-         "• Thông tin giá phòng và đặt phòng\n" +
-         "• Dịch vụ khách sạn\n" +
-         "• Chính sách hủy phòng\n" +
-         "• Câu hỏi thường gặp\n\n" +
-         "Nếu câu hỏi của bạn phức tạp hơn, vui lòng liên hệ trực tiếp:\n" +
-         "📞 Hotline: 0901 234 567\n" +
-         "✉️ Email: info@rayalpark.com\n" +
-         "💬 Facebook: facebook.com/rayalparkhotel";
+  // Default response - NGẮN GỌN
+  return "Tôi có thể giúp bạn về giá phòng, đặt phòng, dịch vụ khách sạn.\n\n" +
+         "Nếu câu hỏi phức tạp, vui lòng liên hệ:\n" +
+         "📞 Hotline: 0901 234 567";
 };
 
 // ========== CONTENT FILTERING ==========
@@ -444,8 +426,18 @@ const getAIResponse = async (userMessage, context = {}, conversationHistory = []
         // Thêm thông tin phòng tìm được nếu có (sau RAG context)
         if (roomSearchResults && roomSearchResults.length > 0) {
           const roomInfoLabel = language === 'vi' ? 'THÔNG TIN PHÒNG TÌM ĐƯỢC' : 'ROOM INFORMATION FOUND';
-          const roomGuideVi = "Bạn cần giới thiệu các phòng này cho khách và hướng dẫn họ đặt phòng. Nếu khách muốn đặt phòng, hãy cho biết ID phòng để họ có thể click vào link đặt phòng.";
-          const roomGuideEn = "You need to introduce these rooms to the customer and guide them to book. If the customer wants to book, please provide the room ID so they can click on the booking link.";
+          const roomGuideVi = "⚠️ QUAN TRỌNG: Khách đã hỏi về tìm phòng. Bạn PHẢI:\n" +
+            "1. Bạn cần giới thiệu các thông tin phòng này cho khách như tiện ích phòng, diện tích phòng, số lượng người ở và hướng dẫn họ đặt phòng. Nếu khách muốn đặt phòng, hãy cho biết ID phòng để họ có thể click vào link đặt phòng."
+            "2. Trả lời NGẮN GỌN (1-2 câu) rằng đã tìm thấy phòng\n" +
+            // "3. KHÔNG giải thích dài dòng về giá phòng, dịch vụ (đã có trong danh sách phòng)\n" +
+            // "4. KHÔNG lặp lại thông tin đã có trong danh sách phòng\n" +
+            "5. Chỉ nói: 'Tôi đã tìm thấy X phòng phù hợp' và để khách xem danh sách phòng bên dưới";
+          const roomGuideEn = "⚠️ IMPORTANT: Customer asked about finding rooms. You MUST:\n" +
+            "1. You need to introduce the room information to the customer like room amenities, room area, number of people and guide them to book. If the customer wants to book, please provide the room ID so they can click on the booking link.\n" +
+            "2. Respond BRIEFLY (1-2 sentences) that rooms were found\n" +
+            // "3. DO NOT explain in detail about prices, services (already in room list)\n" +
+            // "4. DO NOT repeat information already in the room list\n" +
+            "5. Just say: 'I found X suitable rooms' and let customer see the room list below";
           const roomGuide = language === 'vi' ? roomGuideVi : roomGuideEn;
           
           prompt += `\n\n${roomInfoLabel}:\n`;
@@ -469,8 +461,16 @@ const getAIResponse = async (userMessage, context = {}, conversationHistory = []
         // Thêm thông tin phòng tìm được nếu có
         if (roomSearchResults && roomSearchResults.length > 0) {
           const roomInfoLabel = language === 'vi' ? 'THÔNG TIN PHÒNG TÌM ĐƯỢC' : 'ROOM INFORMATION FOUND';
-          const roomGuideVi = "Bạn cần giới thiệu các phòng này cho khách và hướng dẫn họ đặt phòng. Nếu khách muốn đặt phòng, hãy cho biết ID phòng để họ có thể click vào link đặt phòng.";
-          const roomGuideEn = "You need to introduce these rooms to the customer and guide them to book. If the customer wants to book, please provide the room ID so they can click on the booking link.";
+          const roomGuideVi = "⚠️ QUAN TRỌNG: Khách đã hỏi về tìm phòng. Bạn PHẢI:\n" +
+            "1. Trả lời NGẮN GỌN (1-2 câu) rằng đã tìm thấy phòng\n" +
+            "2. KHÔNG giải thích dài dòng về giá phòng, dịch vụ (đã có trong danh sách phòng)\n" +
+            "3. KHÔNG lặp lại thông tin đã có trong danh sách phòng\n" +
+            "4. Chỉ nói: 'Tôi đã tìm thấy X phòng phù hợp' và để khách xem danh sách phòng bên dưới";
+          const roomGuideEn = "⚠️ IMPORTANT: Customer asked about finding rooms. You MUST:\n" +
+            "1. Respond BRIEFLY (1-2 sentences) that rooms were found\n" +
+            "2. DO NOT explain in detail about prices, services (already in room list)\n" +
+            "3. DO NOT repeat information already in the room list\n" +
+            "4. Just say: 'I found X suitable rooms' and let customer see the room list below";
           const roomGuide = language === 'vi' ? roomGuideVi : roomGuideEn;
           
           prompt += `${roomInfoLabel}:\n`;
@@ -542,10 +542,23 @@ const getAIResponse = async (userMessage, context = {}, conversationHistory = []
       console.error("Gemini API Error:", error.message || error);
       // Fallback to mock nếu có lỗi
       const mockResponse = getMockAIResponse(userMessage);
+      if (roomSearchResults && roomSearchResults.length > 0) {
+        // Response ngắn gọn khi có phòng
+        const shortResponse = isRoomSearchRequest 
+          ? `Tôi đã tìm thấy ${roomSearchResults.length} phòng phù hợp với yêu cầu của bạn:`
+          : mockResponse;
+        
+        return {
+          text: shortResponse,
+          rooms: roomSearchResults,
+          hasRooms: true
+        };
+      }
+    
       return {
         text: mockResponse,
-        rooms: roomSearchResults || null,
-        hasRooms: roomSearchResults && roomSearchResults.length > 0
+        rooms: null,
+        hasRooms: false
       };
     }
   }
