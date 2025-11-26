@@ -9,6 +9,11 @@ import bookingRoutes from "./routes/bookingRoutes.js";
 import paymentRoutes from "./routes/paymentRoutes.js";
 import reportRoutes from "./routes/reportRoutes.js";
 import chatRoutes from "./routes/chatRoutes.js";
+import serviceRoutes from "./routes/serviceRoutes.js";
+import promotionRoutes from "./routes/promotionRoutes.js";
+import specialRequestRoutes from "./routes/specialRequestRoutes.js";
+import contactRoutes from "./routes/contactRoutes.js";
+import nearbyPlaceRoutes from "./routes/nearbyPlaceRoutes.js";
 import "./Controller/telegramBotController.js";
 
 // Load biến môi trường từ .env
@@ -34,6 +39,11 @@ app.use("/api/bookings", bookingRoutes);
 app.use("/api/payments", paymentRoutes);
 app.use("/api/reports", reportRoutes);
 app.use("/api/chat", chatRoutes);
+app.use("/api/services", serviceRoutes);
+app.use("/api/promotions", promotionRoutes);
+app.use("/api/special-requests", specialRequestRoutes);
+app.use("/api/contact", contactRoutes);
+app.use("/api/nearby-places", nearbyPlaceRoutes);
 // app.use("/auth", authRoutes);  
 
 // Kết nối MongoDB và chạy server

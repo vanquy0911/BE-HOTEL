@@ -14,6 +14,9 @@ A: Có, bạn có thể đặt phòng cho người khác. Vui lòng cung cấp �
 **Q: Tôi có thể thanh toán bằng cách nào?**
 A: Chúng tôi chấp nhận thanh toán bằng thẻ tín dụng (Visa, Mastercard), chuyển khoản ngân hàng, hoặc tiền mặt tại khách sạn.
 
+**Q: Tôi chỉ có ngân sách khoảng 800.000 VNĐ/đêm thì đặt phòng như thế nào?**
+A: Các phòng Standard tầng thấp hiện có giá từ 800.000 VNĐ/đêm, nhưng số lượng rất hạn chế. Bạn nên đặt sớm trên website, chọn mục “Phòng Standard / Flash Sale”, áp dụng mã khuyến mãi đang mở và nếu cần hỗ trợ giữ suất hãy nhấn nút “Chat với nhân viên” hoặc gọi hotline 0901 234 567 để được giữ phòng trong 24h.
+
 **Q: Tôi có thể hủy đặt phòng không?**
 A: Có, bạn có thể hủy đặt phòng. Chính sách hủy phòng:
 - Hủy trước 48 giờ: Miễn phí

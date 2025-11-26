@@ -4,7 +4,7 @@
 - Diện tích: 25-30 m²
 - Giường: 1 giường đơn hoặc 1 giường đôi
 - Sức chứa: 1-2 người
-- Giá: 1.500.000 - 2.000.000 VNĐ/đêm
+- Giá: 800.000 - 2.000.000 VNĐ/đêm (các phòng Standard tầng thấp thường từ 800.000 - 1.000.000 VNĐ, phòng remodel hoặc view đẹp cao hơn)
 - Tiện nghi: WiFi, TV, Minibar, Phòng tắm riêng
 
 ## Phòng Đôi (Double Room)

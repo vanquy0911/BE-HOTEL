@@ -2,6 +2,7 @@ import asyncHandler from "express-async-handler";
 import mongoose from "mongoose";
 import Booking from "../Models/BookingModel.js";
 import Room from "../Models/RoomModel.js";
+import Promotion from "../Models/PromotionModel.js";
 
 // Hàm tạo đơn đặt phòng mới
 // @route   POST /api/bookings
@@ -9,7 +10,7 @@ export const createBooking = asyncHandler(async (req, res) => {
   try {
     console.log('🔍 Create booking request body:', req.body);
     
-    const { userId, roomId, checkInDate, checkOutDate, totalPrice, note } = req.body;
+    const { userId, roomId, checkInDate, checkOutDate, totalPrice, note, promotionId, discountAmount } = req.body;
 
     // Validation
     if (!userId || !checkInDate || !checkOutDate || !totalPrice) {
@@ -79,6 +80,53 @@ export const createBooking = asyncHandler(async (req, res) => {
       });
     }
 
+    // Validate promotion if provided
+    if (promotionId) {
+      const promotion = await Promotion.findById(promotionId);
+      if (!promotion) {
+        return res.status(400).json({
+          success: false,
+          message: "Mã khuyến mãi không tồn tại"
+        });
+      }
+      
+      // Check if promotion is still valid (so sánh theo ngày UTC để tránh vấn đề timezone)
+      const now = new Date();
+      const todayUTC = new Date(Date.UTC(
+        now.getUTCFullYear(), 
+        now.getUTCMonth(), 
+        now.getUTCDate()
+      ));
+      
+      const promotionStartDate = new Date(promotion.startDate);
+      const startDateUTC = new Date(Date.UTC(
+        promotionStartDate.getUTCFullYear(),
+        promotionStartDate.getUTCMonth(),
+        promotionStartDate.getUTCDate()
+      ));
+      
+      const promotionEndDate = new Date(promotion.endDate);
+      const endDateUTC = new Date(Date.UTC(
+        promotionEndDate.getUTCFullYear(),
+        promotionEndDate.getUTCMonth(),
+        promotionEndDate.getUTCDate()
+      ));
+      
+      if (!promotion.isActive || todayUTC < startDateUTC || todayUTC > endDateUTC) {
+        return res.status(400).json({
+          success: false,
+          message: "Mã khuyến mãi không còn hiệu lực"
+        });
+      }
+      
+      if (promotion.usageLimit && promotion.usageCount >= promotion.usageLimit) {
+        return res.status(400).json({
+          success: false,
+          message: "Mã khuyến mãi đã hết lượt sử dụng"
+        });
+      }
+    }
+
     // Tạo booking mới
     const newBooking = await Booking.create({
       user: userId,
@@ -87,8 +135,18 @@ export const createBooking = asyncHandler(async (req, res) => {
       checkOutDate: checkOut,
       totalPrice,
       note: note || '',
-      status: 'pending'
+      status: 'pending',
+      promotion: promotionId || null,
+      discountAmount: discountAmount || 0
     });
+
+    // Tăng usageCount của promotion nếu có
+    if (promotionId) {
+      await Promotion.findByIdAndUpdate(promotionId, {
+        $inc: { usageCount: 1 }
+      });
+      console.log('✅ Promotion usage count updated:', promotionId);
+    }
 
     console.log('✅ Booking created:', newBooking._id);
 

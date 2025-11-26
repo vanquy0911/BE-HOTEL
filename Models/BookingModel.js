@@ -29,6 +29,14 @@ const bookingSchema = new mongoose.Schema(
       type: Number,
       required: [true, "Tổng giá là bắt buộc"],
     },
+    promotion: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Promotion"
+    },
+    discountAmount: { 
+      type: Number, 
+      default: 0 
+    }, // Số tiền được giảm
     status: {
       type: String,
       enum: ["pending", "confirmed", "cancelled"],

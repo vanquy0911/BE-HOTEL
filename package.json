@@ -21,6 +21,7 @@
         "create-admin": "node createAdmin.js",
         "fix-admin": "node fixAdmin.js",
         "seed-booking": "node seedBookingData.js",
+        "seed-services": "node seedServices.js",
         "ingest-kb": "node scripts/ingestKnowledgeBase.js"
     }
 }
