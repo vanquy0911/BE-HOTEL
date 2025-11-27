@@ -122,6 +122,13 @@
 - Sức chứa: 2 khách
 - Tiện nghi: WiFi miễn phí, TV, Điều hòa, Phòng tắm riêng, Máy sấy tóc
 
+### Phòng Đôi Deluxe 122
+- Mã phòng: N/A
+- Loại: đôi
+- Giá cơ bản: 2.500.000 ₫ / đêm
+- Sức chứa: 2 khách
+- Tiện nghi: WiFi miễn phí, TV 32 inch, Điều hòa, Minibar, Phòng tắm riêng, Máy sấy tóc, Ban công
+
 ### Phòng Đôi Deluxe 120
 - Mã phòng: N/A
 - Loại: đôi
@@ -129,12 +136,12 @@
 - Sức chứa: 2 khách
 - Tiện nghi: WiFi miễn phí, TV 32 inch, Điều hòa, Minibar, Phòng tắm riêng, Máy sấy tóc, Ban công
 
-### Phòng Đôi Deluxe 119
+### Phòng Deluxe Hướng Biển
 - Mã phòng: N/A
 - Loại: đôi
 - Giá cơ bản: 2.500.000 ₫ / đêm
 - Sức chứa: 2 khách
-- Tiện nghi: WiFi miễn phí, TV 32 inch, Điều hòa, Minibar, Phòng tắm riêng, Máy sấy tóc, Ban công
+- Tiện nghi: Ăn sáng, hồ bơi
 
 ### Phòng Đôi Deluxe 125
 - Mã phòng: N/A
@@ -143,21 +150,14 @@
 - Sức chứa: 2 khách
 - Tiện nghi: WiFi miễn phí, TV 32 inch, Điều hòa, Minibar, Phòng tắm riêng, Máy sấy tóc, Ban công
 
-### Phòng Đôi Deluxe 122
+### Phòng Đôi Deluxe 130
 - Mã phòng: N/A
 - Loại: đôi
 - Giá cơ bản: 2.500.000 ₫ / đêm
 - Sức chứa: 2 khách
 - Tiện nghi: WiFi miễn phí, TV 32 inch, Điều hòa, Minibar, Phòng tắm riêng, Máy sấy tóc, Ban công
 
-### Phòng Deluxe Ocean View
-- Mã phòng: N/A
-- Loại: VIP
-- Giá cơ bản: 2.500.000 ₫ / đêm
-- Sức chứa: 2 khách
-- Tiện nghi: WiFi miễn phí - Điều hòa - TV màn hình phẳng - Minibar - Bồn tắm jacuzzi - Ban công riêng - Dịch vụ phòng 24/7
-
-### Phòng Đôi Deluxe 130
+### Phòng Đôi Deluxe 119
 - Mã phòng: N/A
 - Loại: đôi
 - Giá cơ bản: 2.500.000 ₫ / đêm
@@ -178,14 +178,14 @@
 - Sức chứa: 2 khách
 - Tiện nghi: WiFi miễn phí, TV 32 inch, Điều hòa, Minibar, Phòng tắm riêng, Máy sấy tóc, Ban công
 
-### Phòng Deluxe Hướng Biển
+### Phòng Deluxe Ocean View
 - Mã phòng: N/A
-- Loại: đôi
+- Loại: VIP
 - Giá cơ bản: 2.500.000 ₫ / đêm
 - Sức chứa: 2 khách
-- Tiện nghi: Ăn sáng, hồ bơi
+- Tiện nghi: WiFi miễn phí - Điều hòa - TV màn hình phẳng - Minibar - Bồn tắm jacuzzi - Ban công riêng - Dịch vụ phòng 24/7
 
-### Phòng Đôi Deluxe 129
+### Phòng Đôi Deluxe 121
 - Mã phòng: N/A
 - Loại: đôi
 - Giá cơ bản: 2.800.000 ₫ / đêm
@@ -206,17 +206,10 @@
 - Sức chứa: 2 khách
 - Tiện nghi: WiFi miễn phí, TV 32 inch, Điều hòa, Minibar, Phòng tắm riêng, Máy sấy tóc, Ban công
 
-### Phòng Đôi Deluxe 121
+### Phòng Đôi Deluxe 129
 - Mã phòng: N/A
 - Loại: đôi
 - Giá cơ bản: 2.800.000 ₫ / đêm
-- Sức chứa: 2 khách
-- Tiện nghi: WiFi miễn phí, TV 32 inch, Điều hòa, Minibar, Phòng tắm riêng, Máy sấy tóc, Ban công
-
-### Phòng Đôi Deluxe 123
-- Mã phòng: N/A
-- Loại: đôi
-- Giá cơ bản: 3.000.000 ₫ / đêm
 - Sức chứa: 2 khách
 - Tiện nghi: WiFi miễn phí, TV 32 inch, Điều hòa, Minibar, Phòng tắm riêng, Máy sấy tóc, Ban công
 
@@ -240,6 +233,13 @@
 - Giá cơ bản: 3.000.000 ₫ / đêm
 - Sức chứa: 2 khách
 - Tiện nghi: Theo tiêu chuẩn
+
+### Phòng Đôi Deluxe 123
+- Mã phòng: N/A
+- Loại: đôi
+- Giá cơ bản: 3.000.000 ₫ / đêm
+- Sức chứa: 2 khách
+- Tiện nghi: WiFi miễn phí, TV 32 inch, Điều hòa, Minibar, Phòng tắm riêng, Máy sấy tóc, Ban công
 
 ### Phòng Đôi Deluxe 134
 - Mã phòng: N/A
@@ -290,13 +290,6 @@
 - Sức chứa: 2 khách
 - Tiện nghi: WiFi miễn phí, TV 55 inch, Điều hòa, Minibar cao cấp, Phòng tắm với bồn tắm, Máy sấy tóc, Ban công rộng, Bàn làm việc, Két an toàn
 
-### Phòng VIP Premium 145
-- Mã phòng: N/A
-- Loại: VIP
-- Giá cơ bản: 4.800.000 ₫ / đêm
-- Sức chứa: 2 khách
-- Tiện nghi: WiFi miễn phí, TV 55 inch, Điều hòa, Minibar cao cấp, Phòng tắm với bồn tắm, Máy sấy tóc, Ban công rộng, Bàn làm việc, Két an toàn
-
 ### Phòng VIP Premium 142
 - Mã phòng: N/A
 - Loại: VIP
@@ -310,6 +303,20 @@
 - Giá cơ bản: 4.800.000 ₫ / đêm
 - Sức chứa: 2 khách
 - Tiện nghi: WiFi miễn phí, TV 55 inch, Điều hòa, Minibar cao cấp, Phòng tắm với bồn tắm, Máy sấy tóc, Ban công rộng, Bàn làm việc, Két an toàn
+
+### Phòng VIP Premium 145
+- Mã phòng: N/A
+- Loại: VIP
+- Giá cơ bản: 4.800.000 ₫ / đêm
+- Sức chứa: 2 khách
+- Tiện nghi: WiFi miễn phí, TV 55 inch, Điều hòa, Minibar cao cấp, Phòng tắm với bồn tắm, Máy sấy tóc, Ban công rộng, Bàn làm việc, Két an toàn
+
+### Phòng Deluxe Family 6 Người
+- Mã phòng: N/A
+- Loại: suite
+- Giá cơ bản: 4.800.000 ₫ / đêm
+- Sức chứa: 2 khách
+- Tiện nghi: WiFi miễn phí, TV 50 inch, Điều hòa, Minibar, Phòng tắm riêng, Máy sấy tóc, Ban công, Bàn làm việc, Két an toàn, Sofa bed, Dịch vụ phòng 24/7
 
 ### Phòng VIP Premium 139
 - Mã phòng: N/A
@@ -325,14 +332,21 @@
 - Sức chứa: 2 khách
 - Tiện nghi: WiFi miễn phí, TV 55 inch, Điều hòa, Minibar cao cấp, Phòng tắm với bồn tắm, Máy sấy tóc, Ban công rộng, Bàn làm việc, Két an toàn
 
-### Phòng VIP Premium 138
+### Phòng Family 6 Người
+- Mã phòng: N/A
+- Loại: suite
+- Giá cơ bản: 5.000.000 ₫ / đêm
+- Sức chứa: 2 khách
+- Tiện nghi: WiFi miễn phí, TV 55 inch, Điều hòa, Minibar, Phòng tắm riêng, Máy sấy tóc, Ban công rộng, Bàn làm việc, Két an toàn, Phòng khách riêng, Sofa bed, Dịch vụ phòng 24/7
+
+### Phòng VIP Premium 141
 - Mã phòng: N/A
 - Loại: VIP
 - Giá cơ bản: 5.200.000 ₫ / đêm
 - Sức chứa: 2 khách
 - Tiện nghi: WiFi miễn phí, TV 55 inch, Điều hòa, Minibar cao cấp, Phòng tắm với bồn tắm, Máy sấy tóc, Ban công rộng, Bàn làm việc, Két an toàn
 
-### Phòng VIP Premium 141
+### Phòng VIP Premium 138
 - Mã phòng: N/A
 - Loại: VIP
 - Giá cơ bản: 5.200.000 ₫ / đêm
@@ -360,14 +374,21 @@
 - Sức chứa: 2 khách
 - Tiện nghi: WiFi miễn phí, TV 65 inch Smart TV, Điều hòa, Minibar cao cấp, Phòng tắm xa xỉ với bồn tắm jacuzzi, Máy sấy tóc, Ban công rộng, Bàn làm việc, Két an toàn, Phòng khách riêng, Sofa bed, Hệ thống âm thanh, Dịch vụ phòng 24/7
 
-### Phòng Suite Luxury 146
+### Phòng Presidential 8 Người
+- Mã phòng: N/A
+- Loại: suite
+- Giá cơ bản: 7.500.000 ₫ / đêm
+- Sức chứa: 2 khách
+- Tiện nghi: WiFi miễn phí, TV 65 inch Smart TV, Điều hòa, Minibar cao cấp, Phòng tắm với bồn tắm, Máy sấy tóc, Ban công rộng, Bàn làm việc, Két an toàn, Phòng khách riêng, Sofa bed, Hệ thống âm thanh, Dịch vụ phòng 24/7, Bếp mini, Máy giặt
+
+### Phòng Suite Luxury 147
 - Mã phòng: N/A
 - Loại: suite
 - Giá cơ bản: 7.500.000 ₫ / đêm
 - Sức chứa: 2 khách
 - Tiện nghi: WiFi miễn phí, TV 65 inch Smart TV, Điều hòa, Minibar cao cấp, Phòng tắm xa xỉ với bồn tắm jacuzzi, Máy sấy tóc, Ban công rộng, Bàn làm việc, Két an toàn, Phòng khách riêng, Sofa bed, Hệ thống âm thanh, Dịch vụ phòng 24/7
 
-### Phòng Suite Luxury 147
+### Phòng Suite Luxury 146
 - Mã phòng: N/A
 - Loại: suite
 - Giá cơ bản: 7.500.000 ₫ / đêm
@@ -380,6 +401,13 @@
 - Giá cơ bản: 8.000.000 ₫ / đêm
 - Sức chứa: 2 khách
 - Tiện nghi: WiFi miễn phí, TV 65 inch Smart TV, Điều hòa, Minibar cao cấp, Phòng tắm xa xỉ với bồn tắm jacuzzi, Máy sấy tóc, Ban công rộng, Bàn làm việc, Két an toàn, Phòng khách riêng, Sofa bed, Hệ thống âm thanh, Dịch vụ phòng 24/7
+
+### Phòng Suite Luxury 8 Người
+- Mã phòng: N/A
+- Loại: suite
+- Giá cơ bản: 8.000.000 ₫ / đêm
+- Sức chứa: 2 khách
+- Tiện nghi: WiFi miễn phí, TV 65 inch Smart TV, Điều hòa, Minibar cao cấp, Phòng tắm xa xỉ với bồn tắm jacuzzi, Máy sấy tóc, Ban công rộng, Bàn làm việc, Két an toàn, Phòng khách riêng, Sofa bed, Hệ thống âm thanh, Dịch vụ phòng 24/7, Bếp mini
 
 ## Dịch vụ đang cung cấp
 ### Phòng gym (miễn phí)
