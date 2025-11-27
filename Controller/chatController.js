@@ -431,13 +431,15 @@ const getAIResponse = async (userMessage, context = {}, conversationHistory = []
             "2. Trả lời NGẮN GỌN (1-2 câu) rằng đã tìm thấy phòng\n" +
             // "3. KHÔNG giải thích dài dòng về giá phòng, dịch vụ (đã có trong danh sách phòng)\n" +
             // "4. KHÔNG lặp lại thông tin đã có trong danh sách phòng\n" +
-            "5. Chỉ nói: 'Tôi đã tìm thấy X phòng phù hợp' và để khách xem danh sách phòng bên dưới";
+            "3. QUAN TRỌNG: Với mỗi phòng, bạn PHẢI thêm link để khách click xem chi tiết. Format link: [Tên phòng - Xem chi tiết](URL). Ví dụ: [Phòng Deluxe - Xem chi tiết](" + (process.env.FRONTEND_URL || 'http://localhost:3000') + "/room/ROOM_ID)\n" +
+            "4. Chỉ nói: 'Tôi đã tìm thấy X phòng phù hợp' và để khách xem danh sách phòng bên dưới";
           const roomGuideEn = "⚠️ IMPORTANT: Customer asked about finding rooms. You MUST:\n" +
             "1. You need to introduce the room information to the customer like room amenities, room area, number of people and guide them to book. If the customer wants to book, please provide the room ID so they can click on the booking link.\n" +
             "2. Respond BRIEFLY (1-2 sentences) that rooms were found\n" +
             // "3. DO NOT explain in detail about prices, services (already in room list)\n" +
             // "4. DO NOT repeat information already in the room list\n" +
-            "5. Just say: 'I found X suitable rooms' and let customer see the room list below";
+            "3. IMPORTANT: For each room, you MUST add a clickable link for customers to view details. Link format: [Room Name - View Details](URL). Example: [Deluxe Room - View Details](" + (process.env.FRONTEND_URL || 'http://localhost:3000') + "/room/ROOM_ID)\n" +
+            "4. Just say: 'I found X suitable rooms' and let customer see the room list below";
           const roomGuide = language === 'vi' ? roomGuideVi : roomGuideEn;
           
           prompt += `\n\n${roomInfoLabel}:\n`;
@@ -446,10 +448,11 @@ const getAIResponse = async (userMessage, context = {}, conversationHistory = []
             prompt += `   ${language === 'vi' ? 'Giá' : 'Price'}: ${room.pricePerNight.toLocaleString('vi-VN')} VND/night\n`;
             prompt += `   ${language === 'vi' ? 'Số người' : 'Max occupancy'}: ${room.maxOccupancy}\n`;
             prompt += `   View: ${room.view || 'N/A'}\n`;
+            prompt += `   ${language === 'vi' ? 'Link xem chi tiết' : 'View details link'}: ${roomUrl}\n`;
             prompt += `   ID: ${room._id}\n\n`;
           });
           prompt += `${roomGuide}\n\n`;
-        } else if (isRoomSearchRequest && roomSearchResults && roomSearchResults.length === 0) {
+        } else if (isRoomSearchRequest && roomSearchResults && roomSearchResults.lengthimage.png === 0) {
           const noRoomNoteVi = "LƯU Ý: Không tìm thấy phòng nào phù hợp với yêu cầu. Hãy thông báo cho khách và đề xuất các phòng khác hoặc liên hệ trực tiếp.";
           const noRoomNoteEn = "NOTE: No rooms found matching the request. Please inform the customer and suggest other rooms or contact directly.";
           prompt += `\n\n${language === 'vi' ? noRoomNoteVi : noRoomNoteEn}\n\n`;
@@ -632,7 +635,7 @@ export const createSession = asyncHandler(async (req, res) => {
 
 // @route   POST /api/chat
 // @desc    Gửi tin nhắn và nhận phản hồi từ AI
-// @access  Public (chỉ dành cho user, admin không thể chat với bot)
+// @access  Public (cho phép cả user và admin chat với bot)
 export const chatWithAI = asyncHandler(async (req, res) => {
   try {
     const { message, sessionId, language } = req.body; // ✅ Nhận language từ body
@@ -701,19 +704,9 @@ export const chatWithAI = asyncHandler(async (req, res) => {
       }
     }
     
-    // Kiểm tra nếu session đang ở human mode
-    // Nếu là human mode, cho phép cả admin và user gửi tin nhắn (không chặn)
-    // Nếu là bot mode và user là admin, thì chặn admin chat với bot
-    if (!session || session.chatType !== 'human') {
-      // Chỉ chặn admin khi đang chat với bot (không phải human mode)
-      if (req.user && req.user.role === "admin") {
-        console.log('🚫 chatWithAI - Blocked admin from chatting with bot:', req.user.email);
-        return res.status(403).json({
-          success: false,
-          message: "Admin không thể chat với bot. Vui lòng sử dụng Admin Chat để quản lý tin nhắn từ khách hàng."
-        });
-      }
-    }
+    // ✅ BỎ CHẶN ADMIN - Cho phép admin test chatbot
+    // Admin có thể chat với bot để test và xem chatbot hoạt động như thế nào
+    // Admin Chat vẫn hoạt động riêng để quản lý tin nhắn từ khách hàng
     
     // Debug: Log user info nếu có
     if (req.user) {
