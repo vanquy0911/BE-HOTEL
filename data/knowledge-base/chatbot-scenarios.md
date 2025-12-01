@@ -7,19 +7,88 @@ Tài liệu này tổng hợp các “trend kịch bản” ưu tiên cho chatbo
 ## 1. Booking Journey Scenarios
 
 ### 1.1 Đặt phòng tiêu chuẩn (website/app)
-- **Trigger:** "Tôi muốn đặt phòng", "book phòng", "làm sao để đặt phòng", "đặt phòng ngày 15/12", "bây giờ làm sao để đặt phòng"
+- **Trigger:** "Tôi muốn đặt phòng", "book phòng", "làm sao để đặt phòng", "đặt phòng ngày 15/12", "bây giờ làm sao để đặt phòng", **"muốn đặt phòng 4 người"**, **"đặt phòng cho 4 người"**, **"phòng 4 người"**, **"tôi cần phòng 4 người"**, **"tôi cần tìm phòng 2 người lớn 1 trẻ em 9 tuổi"**, **"đặt phòng cho 2 adults và 1 child age 8"**, **"2 người lớn 2 trẻ em 5 và 8 tuổi"**, **"3 người lớn 2 trẻ em 6 và 9 tuổi"**, **"2 người lớn 3 trẻ em 4, 7 và 12 tuổi"**, **"1 người lớn 1 trẻ em 10 tuổi"**, **"gia đình 2 người lớn 1 trẻ em 3 tuổi"**
 - **Luồng gợi ý:**
   1. **Bước 1 - Thu thập thông tin cơ bản:**
      - Hỏi: "Bạn muốn ở ngày nào? (check-in và check-out)"
      - Hỏi: "Có bao nhiêu người?"
+     - **⚠️⚠️⚠️ QUAN TRỌNG:** Bot KHÔNG được hỏi thông tin cá nhân (Họ và tên, Email, Số điện thoại) ở bước này
+     - Bot CHỈ hỏi: "Ngày nhận phòng và trả phòng dự kiến là khi nào?" và "Quý khách đi bao nhiêu người?" để **gợi ý phòng**
+     - Bot KHÔNG được nói "để hoàn tất việc đặt phòng" mà phải nói "để gợi ý phòng phù hợp"
      - Hỏi: "Bạn muốn loại phòng nào? (Standard, Deluxe, VIP, Suite) hoặc để tôi đề xuất"
+     - **QUAN TRỌNG:** Nếu khách đã cung cấp số người trong trigger (ví dụ: "muốn đặt phòng 4 người"), BỎ QUA bước hỏi số người và chuyển thẳng sang Bước 2
+     - **QUAN TRỌNG:** Nếu khách đã cung cấp thông tin về người lớn và trẻ em (ví dụ: "2 người lớn 1 trẻ em 9 tuổi", "2 người lớn 2 trẻ em 5 và 8 tuổi", "3 người lớn 2 trẻ em 6 và 9 tuổi"):
+       - Bot PHẢI parse được: số người lớn, số trẻ em và tuổi của TỪNG trẻ (có thể nhiều trẻ với tuổi khác nhau)
+       - Bot PHẢI tính tổng sức chứa: số người lớn + số trẻ em
+       - Bot PHẢI xác nhận lại thông tin và giải thích chính sách phụ thu trẻ em cho TỪNG trẻ
+       - **Nếu CHƯA có ngày check-in/out:**
+         - Xác nhận: "Tôi hiểu bạn cần phòng cho [X] người lớn và [Y] trẻ em."
+         - Liệt kê chi tiết từng trẻ: "Trong đó: [trẻ 1] [tuổi] tuổi, [trẻ 2] [tuổi] tuổi..." (nếu có nhiều trẻ)
+         - Giải thích chính sách cho từng trẻ: 
+           - "Trẻ em [tuổi] tuổi: [chính sách dựa trên tuổi]"
+           - "Trẻ em [tuổi] tuổi: [chính sách dựa trên tuổi]"
+         - Hỏi: "Để tìm phòng phù hợp và tính giá chính xác, bạn vui lòng cho tôi biết: Ngày nhận phòng và ngày trả phòng?"
+       - **Nếu ĐÃ có ngày check-in/out:**
+         - Xác nhận: "Tôi hiểu bạn cần phòng cho [X] người lớn và [Y] trẻ em từ [ngày check-in] đến [ngày check-out]."
+         - Liệt kê chi tiết từng trẻ nếu có nhiều trẻ với tuổi khác nhau
+         - Tìm phòng ngay với `maxOccupancy >= (số người lớn + số trẻ em)`
+         - Hiển thị danh sách phòng phù hợp với giá chi tiết (bao gồm phụ thu trẻ em nếu có)
+         - Giải thích ngắn gọn về phụ thu: 
+           - Nếu có nhiều trẻ với tuổi khác nhau: "Lưu ý: Phụ thu trẻ em sẽ được tính theo từng trẻ (trẻ [tuổi] tuổi: [X]%, trẻ [tuổi] tuổi: [Y]%)"
+           - Nếu tất cả trẻ cùng tuổi: "Lưu ý: Trẻ em [tuổi] tuổi: phụ thu [X]% giá người lớn (sẽ được tính chi tiết khi bạn chọn phòng)"
   
   2. **Bước 2 - Lấy danh sách phòng và hiển thị gợi ý:**
+     - **QUAN TRỌNG:** Khi khách nói "muốn đặt phòng X người" hoặc "phòng X người":
+       - Bot PHẢI tự động tìm phòng có `maxOccupancy >= X người` và `maxOccupancy <= X + 2 người`
+       - Bot PHẢI ƯU TIÊN hiển thị phòng có `maxOccupancy = X người` (chính xác số người yêu cầu)
+       - Bot CHỈ được hiển thị phòng có sức chứa phù hợp với yêu cầu (ví dụ: nếu yêu cầu 4 người, chỉ hiển thị phòng 4-6 người, KHÔNG hiển thị phòng 8 người trở lên)
+       - Bot PHẢI hiển thị list phòng phù hợp (3-5 phòng cụ thể)
+       - Bot KHÔNG được chỉ đưa ra các loại phòng chung chung (phòng đôi, phòng VIP) mà PHẢI hiển thị danh sách phòng cụ thể từ database
+       - Ví dụ: Nếu khách nói "muốn đặt phòng 4 người", bot phải tìm và hiển thị list phòng có thể ở được 4 người (ưu tiên phòng 4 người, sau đó mới đến phòng 5-6 người nếu không đủ)
+     - **⚠️⚠️⚠️ QUAN TRỌNG:** Khi bot đề xuất phòng (ví dụ: "3 phòng Đôi", "1 phòng Suite"):
+       - Bot PHẢI hiển thị ĐÚNG số lượng phòng được đề xuất (ví dụ: 3 phòng Đôi + 1 phòng Suite = 4 phòng, KHÔNG được hiển thị 5 phòng)
+       - Bot PHẢI hiển thị các phòng với SỐ THỨ TỰ rõ ràng (1, 2, 3, 4...) để khách có thể chọn "phòng số X"
+       - Bot PHẢI lưu danh sách phòng vào `lastRoomSearchResults` để khách có thể chọn phòng số X
+       - Bot PHẢI hiển thị room cards cho TẤT CẢ các phòng được đề xuất
+     - **QUAN TRỌNG:** Khi khách có thông tin về trẻ em và ĐÃ có ngày check-in/out:
+       - Bot PHẢI tính tổng sức chứa = số người lớn + số trẻ em
+       - Bot PHẢI tìm phòng với `maxOccupancy >= tổng sức chứa`
+       - **⚠️⚠️⚠️ QUAN TRỌNG:** Bot PHẢI tính và hiển thị TỔNG CHI PHÍ DỰ KIẾN cho TỪNG phòng ngay khi đề xuất (bao gồm cả phụ thu trẻ em)
+       - Bot PHẢI hiển thị chi tiết: giá cơ bản + phụ thu trẻ em = tổng chi phí
+       - Bot PHẢI hiển thị chi tiết phụ thu cho từng trẻ em (nếu có nhiều trẻ với tuổi khác nhau)
+       - Bot PHẢI trả về danh sách phòng (rooms array) để frontend hiển thị dưới dạng cards
+       - Ví dụ format hiển thị:
+         ```
+         Tôi đã tìm thấy các phòng phù hợp cho bạn:
+         
+         1. Phòng Deluxe Hướng Biển - 2.500.000 VNĐ/đêm
+            • Sức chứa: 4 người
+            • Tiện nghi: WiFi, TV, Điều hòa, Mini bar
+            • Số đêm: 2 đêm
+            • Giá cơ bản cho 2 đêm: 5.000.000 VNĐ
+            • Phụ thu trẻ em: 500.000 VNĐ
+              Chi tiết phụ thu:
+                • Trẻ 1 (8 tuổi): 500.000 VNĐ (50% giá người lớn)
+            • TỔNG CHI PHÍ DỰ KIẾN: 5.500.000 VNĐ
+         
+         2. Phòng Standard 103 - 1.500.000 VNĐ/đêm
+            • Sức chứa: 3 người
+            • Tiện nghi: WiFi, TV, Điều hòa
+            • Số đêm: 2 đêm
+            • Giá cơ bản cho 2 đêm: 3.000.000 VNĐ
+            • Phụ thu trẻ em: 500.000 VNĐ
+              Chi tiết phụ thu:
+                • Trẻ 1 (8 tuổi): 500.000 VNĐ (50% giá người lớn)
+            • TỔNG CHI PHÍ DỰ KIẾN: 3.500.000 VNĐ
+         
+         Bạn muốn chọn phòng nào? (Gõ số thứ tự)
+         ```
+       - **Lưu ý:** Bot PHẢI tính giá chi tiết cho TỪNG phòng trong danh sách, không chỉ nói chung chung
      - Gọi API `GET /api/rooms?roomType=X&maxOccupancy=Y&isAvailable=1` để lấy phòng phù hợp
      - Hiển thị list 3-5 phòng gợi ý với thông tin:
        - Tên phòng + số phòng
        - Giá/đêm
-       - Sức chứa
+       - Sức chứa (PHẢI hiển thị chính xác số người của phòng)
        - Tiện nghi chính
        - Ví dụ: "1. Phòng Standard 103 - 800.000 VNĐ/đêm (2 người, WiFi, TV, Điều hòa)"
      - Hỏi: "Bạn muốn chọn phòng nào? (gõ số thứ tự hoặc tên phòng)"
@@ -30,8 +99,31 @@ Tài liệu này tổng hợp các “trend kịch bản” ưu tiên cho chatbo
        - Bot KHÔNG được hỏi lại về việc tìm kiếm phòng hoặc yêu cầu thông tin để tìm phòng
        - Bot KHÔNG được tìm lại phòng từ database
        - Bot PHẢI sử dụng chính xác thông tin phòng từ list (tên, giá, loại, sức chứa)
-     - Xác nhận: "Tuyệt vời! Bạn đã chọn [Tên phòng] với giá [Giá] VNĐ/đêm."
-     - Nếu khách muốn đặt nhiều phòng cùng loại: Hỏi "Bạn muốn đặt bao nhiêu phòng [Tên phòng]?"
+    - **⚠️⚠️⚠️ QUAN TRỌNG:** Sau khi khách chọn phòng, bot PHẢI trả lời theo format sau:
+      - Xác nhận: "Tuyệt vời! Bạn đã chọn [Tên phòng] với giá [Giá] VNĐ/đêm."
+      - Hiển thị thông tin phòng đã chọn (tên, giá, loại, sức chứa, view, tiện nghi, tổng giá nếu có ngày)
+      - Kết thúc với message: "Hãy nhấn vào card phòng bên dưới để xem chi tiết và đặt phòng. Mọi thắc mắc xin quay lại chat để tiếp tục hỏi nhé."
+      - Bot PHẢI tạo và trả về `roomDetailLink` để frontend hiển thị nút "Xem chi tiết phòng" trong card
+      - **QUAN TRỌNG:** Bot KHÔNG được hỏi thông tin cá nhân (họ tên, email, số điện thoại) sau khi khách chọn phòng
+      - Bot KHÔNG được hỏi thêm thông tin (ngày, số người, trẻ em) sau khi khách chọn phòng
+      - Bot KHÔNG được tạo booking link hoặc payment link ở bước này
+      - **LÝ DO:** User sẽ click vào card phòng để xem chi tiết và đặt phòng trên booking form, không cần hỏi thông tin trong chat
+     - Nếu khách muốn đặt nhiều phòng cùng loại: Hỏi "Bạn muốn đặt bao nhiêu phòng [Tên phòng]?" (nhưng vẫn hiển thị nút xem chi tiết)
+  
+  3.1. **Bước 3.1 - Khi khách nói "chốt" hoặc "đặt phòng":**
+     - **⚠️⚠️⚠️ QUAN TRỌNG:** Khi khách nói "chốt", "chốt phòng đó", "đặt phòng", "đặt phòng đó":
+       - Bot PHẢI hiển thị chi tiết phòng đã chọn (tên, giá, loại, sức chứa, view, tiện nghi, tổng giá nếu có ngày)
+       - Bot KHÔNG được tìm phòng mới hoặc hiển thị danh sách phòng khác
+       - **Nếu CHƯA có thông tin cá nhân (tên, email, số điện thoại):**
+         - Bot PHẢI hỏi thông tin cá nhân: "Để hoàn tất đặt phòng, bạn vui lòng cho tôi biết:\n- Họ và tên:\n- Email:\n- Số điện thoại:"
+         - Bot KHÔNG được nói "đã chốt" hoặc "đã đặt phòng" khi chưa có thông tin cá nhân
+       - **Nếu ĐÃ có thông tin cá nhân nhưng chưa có ngày check-in/out:**
+         - Bot PHẢI gửi link đặt phòng ngay với thông tin đã điền sẵn (phòng, thông tin cá nhân)
+         - Bot nói: "Tôi đã chuẩn bị link đặt phòng cho bạn. Bạn vui lòng điền ngày check-in/out trên form đặt phòng."
+       - **Nếu ĐÃ có đủ thông tin (phòng, ngày, thông tin cá nhân):**
+         - Bot PHẢI gửi link đặt phòng với tất cả thông tin đã điền sẵn
+         - Hoặc nếu booking đã được tạo trong database, bot gửi link thanh toán
+       - Bot PHẢI gửi link đặt phòng (link sẽ được thêm tự động) để khách hàng có thể hoàn tất đặt phòng
      - **Trường hợp đặc biệt:**
        - Nếu khách chọn phòng số không có trong list (ví dụ: list có 4 phòng nhưng khách chọn phòng số 5):
          - Thông báo: "Xin lỗi, chỉ có [X] phòng trong danh sách. Bạn vui lòng chọn từ phòng số 1 đến số [X]."
@@ -44,22 +136,54 @@ Tài liệu này tổng hợp các “trend kịch bản” ưu tiên cho chatbo
          - Cập nhật `lastRoomSearchResults` với list mới
   
   4. **Bước 4 - Xác nhận và hỏi thông tin còn thiếu:**
-     - **Nếu chưa có đủ thông tin (ngày, số người):**
-       - Hỏi trong 1 câu duy nhất:
-         "Để hoàn tất đặt phòng, bạn vui lòng cho tôi biết:
-         - Ngày nhận phòng và ngày trả phòng?
-         - Số lượng người?
-         Sau khi có thông tin, tôi sẽ tính giá tổng và nêu đầy đủ chính sách cho bạn."
+     - **⚠️⚠️⚠️ QUAN TRỌNG: Khi khách cung cấp đủ thông tin (ngày check-in/out + số người + email + phone):**
+       - Bot PHẢI TỰ ĐỘNG kiểm tra phòng trống và hiển thị room cards ngay lập tức
+       - Bot KHÔNG được hỏi lại "bạn muốn chúng tôi tự động kiểm tra phòng hay không"
+       - Bot PHẢI trả lời: "Tôi đã tự động kiểm tra và tìm thấy [X] phòng phù hợp với yêu cầu của quý khách. Vui lòng xem chi tiết các phòng bên dưới và chọn phòng bạn muốn đặt."
+       - Bot PHẢI trả về danh sách phòng (rooms array) để frontend hiển thị room cards
+       - Bot KHÔNG được hỏi lại về loại phòng hoặc số lượng phòng
+     - **Nếu CHƯA có ngày check-in/out nhưng ĐÃ biết phòng và số người lớn (adults / maxOccupancy):**
+       - KHÔNG hỏi lại "số lượng người".
+       - Hỏi: 
+       "Để hoàn tất đặt phòng, bạn vui lòng cho tôi biết:
+       - Ngày nhận phòng và ngày trả phòng?
+       - Trong đoàn có **trẻ em đi kèm không**? Nếu có, khoảng **bao nhiêu bé và tầm mấy tuổi**?"
+       - Sau khi có thông tin, tính giá tổng (bao gồm phụ thu trẻ em nếu có) và nêu đầy đủ chính sách.
+     - **Nếu HOÀN TOÀN chưa có thông tin về số người (không có adults / maxOccupancy):**
+       - Khi đó mới được hỏi:
+       "Bạn vui lòng cho tôi biết:
+       - Ngày nhận phòng và ngày trả phòng?
+       - Số lượng người lớn và số trẻ em (kèm độ tuổi nếu có)?"
+       - **Nếu đã có thông tin về trẻ em nhưng chưa có ngày:**
+         - Xác nhận: "Tôi hiểu bạn cần phòng cho [X] người lớn và [Y] trẻ em."
+         - **Nếu có nhiều trẻ với tuổi khác nhau:** Liệt kê từng trẻ: "Trong đó: [trẻ 1] [tuổi] tuổi, [trẻ 2] [tuổi] tuổi, [trẻ 3] [tuổi] tuổi..."
+         - **Nếu tất cả trẻ cùng tuổi:** "Trong đó: [Y] trẻ em [tuổi] tuổi"
+         - Giải thích chính sách phụ thu trẻ em cho TỪNG trẻ dựa trên tuổi:
+           - Trẻ dưới 6 tuổi: "Trẻ em [tuổi] tuổi: miễn phí nếu ở chung giường với ba mẹ"
+           - Trẻ 6-11 tuổi: "Trẻ em [tuổi] tuổi: phụ thu 50% giá người lớn"
+           - Trẻ từ 12 tuổi trở lên: "Trẻ em [tuổi] tuổi: tính như người lớn (100% giá người lớn)"
+         - **Ví dụ với nhiều trẻ:** "Theo chính sách: Trẻ em 4 tuổi: miễn phí. Trẻ em 8 tuổi: phụ thu 50% giá người lớn. Trẻ em 13 tuổi: tính như người lớn (100%)."
+         - Hỏi: "Để tìm phòng phù hợp và tính giá chính xác, bạn vui lòng cho tôi biết: Ngày nhận phòng và ngày trả phòng?"
      - **Nếu đã có đủ thông tin (ngày, số người):**
-       - Tính tổng giá: `totalPrice = (pricePerNight * số đêm) * số phòng`
+       - Tính tổng giá: 
+         - Nếu có trẻ em: Sử dụng hàm `calculateTotalPriceWithChildSurcharge` để tính giá cơ bản + phụ thu trẻ em
+         - Nếu không có trẻ em: `totalPrice = (pricePerNight * số đêm) * số phòng`
        - Xác nhận lại thông tin:
          - Phòng: [Tên phòng]
          - Check-in: [Ngày] từ 14:00
          - Check-out: [Ngày] trước 12:00
          - Số đêm: [X] đêm
          - Số phòng: [Y]
-         - Số người: [Z] người
+         - Số người lớn: [Z] người
+         - Số trẻ em: [W] trẻ (nếu có)
          - Giá/đêm: [Giá] VNĐ
+         - **Nếu có phụ thu trẻ em:**
+           - Giá cơ bản: [Giá cơ bản] VNĐ
+           - Phụ thu trẻ em: [Phụ thu] VNĐ
+           - Chi tiết phụ thu:
+             * Trẻ [tuổi] tuổi: [phụ thu] VNĐ ([X]% giá người lớn)
+             * Trẻ [tuổi] tuổi: [phụ thu] VNĐ ([Y]% giá người lớn)
+             * (Lặp lại cho từng trẻ nếu có nhiều trẻ với tuổi khác nhau)
          - **Tổng tiền: [Tổng] VNĐ**
        - **Tự động nêu CHÍNH SÁCH đầy đủ:**
          - **Check-in:** Từ 14:00. Check-in sớm (trước 14:00) có thể sắp xếp với phụ phí, tùy tình trạng phòng.
@@ -137,6 +261,13 @@ Tài liệu này tổng hợp các “trend kịch bản” ưu tiên cho chatbo
   - Khách muốn đặt giúp người khác → Thu thông tin người check-in
   - Khách muốn đặt nhiều loại phòng khác nhau → Tạo nhiều booking riêng biệt hoặc booking với nhiều roomId
   - Phòng đã hết trong khoảng thời gian → Đề xuất phòng khác hoặc ngày khác
+  - **Nhiều trẻ em với tuổi khác nhau:**
+    - Bot PHẢI parse được tất cả trẻ em và tuổi của từng trẻ
+    - Bot PHẢI tính phụ thu riêng cho từng trẻ dựa trên tuổi
+    - Bot PHẢI hiển thị chi tiết phụ thu cho từng trẻ khi tính giá
+    - Ví dụ: "2 người lớn 3 trẻ em 4, 7 và 12 tuổi" → Parse: 2 adults, 3 children (ages: 4, 7, 12)
+    - Tính phụ thu: Trẻ 4 tuổi (miễn phí), Trẻ 7 tuổi (50%), Trẻ 12 tuổi (100%)
+    - Hiển thị: "Phụ thu trẻ em: [X] VNĐ. Chi tiết: Trẻ 1 (4 tuổi): miễn phí, Trẻ 2 (7 tuổi): [Y] VNĐ (50%), Trẻ 3 (12 tuổi): [Z] VNĐ (100%)"
 
 ### 1.2 Đặt nhiều phòng / gia đình
 - **Trigger:** "6 người", "8 người", "gia đình 5 người", "đoàn 7 người", "nhóm lớn"
@@ -219,30 +350,58 @@ Tài liệu này tổng hợp các “trend kịch bản” ưu tiên cho chatbo
 - **Biến thể:** khách muốn ở nhiều đêm → gợi ý combo/flash sale; khách sẵn sàng chia sẻ thêm thông tin (thứ tự ưu tiên: ngày linh hoạt, sẵn sàng đặt trước, ok trả trước…).
 
 ### 1.8 Xử lý chọn phòng từ list đã hiển thị (QUAN TRỌNG)
-- **Trigger:** "tôi chọn phòng số X", "phòng thứ X", "vậy tôi chọn đặc phòng số X", hoặc chỉ nói số "X" sau khi đã có list phòng
-- **Context cần có:** `lastRoomSearchResults` - danh sách phòng đã hiển thị cho khách
+- **Trigger:** "tôi chọn phòng số X", "phòng thứ X", "vậy tôi chọn đặc phòng số X", "chốt phòng đó", "chốt phòng này", "đặt phòng đó", "đặt phòng này", hoặc chỉ nói số "X" sau khi đã có list phòng
+- **Context cần có:** `lastRoomSearchResults` - danh sách phòng đã hiển thị cho khách, hoặc `selectedRoom` - phòng đã chọn trước đó
 - **Luồng xử lý:**
   1. **Kiểm tra context:**
-     - Nếu có `lastRoomSearchResults` và khách chọn phòng số X:
+     - **Nếu khách nói "chốt phòng đó", "chốt phòng này", "đặt phòng đó", "đặt phòng này":**
+       - Kiểm tra xem đã có `selectedRoom` trong context chưa
+       - Nếu CÓ `selectedRoom`: 
+         - KHÔNG tìm lại phòng từ database
+         - KHÔNG hiển thị danh sách phòng mới
+         - PHẢI hiển thị CHI TIẾT phòng đã chọn (tên, giá, loại, sức chứa, view, tiện nghi, hình ảnh)
+         - Sau đó hỏi thông tin còn thiếu (ngày, số người, thông tin cá nhân) để hoàn tất đặt phòng
+       - Nếu CHƯA có `selectedRoom` nhưng có `lastRoomSearchResults`:
+         - Hỏi khách muốn chọn phòng số mấy từ danh sách đã hiển thị
+       - Nếu CHƯA có cả `selectedRoom` và `lastRoomSearchResults`:
+         - Hỏi khách muốn đặt phòng nào, cần thông tin để tìm phòng
+     - **Nếu khách chọn phòng số X từ list:**
        - Lấy phòng tại index (X - 1) từ `lastRoomSearchResults`
        - Lưu thông tin phòng vào `selectedRoom` context
        - KHÔNG tìm lại phòng từ database
        - KHÔNG hỏi lại về việc tìm kiếm phòng
    
-  2. **Xác nhận phòng đã chọn:**
-     - Sử dụng chính xác thông tin từ `lastRoomSearchResults`:
-       - Tên phòng: `selectedRoom.name`
-       - Giá: `selectedRoom.pricePerNight`
-       - Loại: `selectedRoom.roomType`
-       - Sức chứa: `selectedRoom.maxOccupancy`
-     - Xác nhận: "Tuyệt vời! Bạn đã chọn [Tên phòng] với giá [Giá] VNĐ/đêm."
+  2. **Xác nhận và hiển thị chi tiết phòng đã chọn:**
+     - **QUAN TRỌNG:** Khi khách nói "chốt phòng đó" hoặc đã chọn phòng, bot PHẢI hiển thị CHI TIẾT phòng:
+       - Tên phòng đầy đủ: `selectedRoom.name`
+       - Giá/đêm: `selectedRoom.pricePerNight` VNĐ
+       - Loại phòng: `selectedRoom.roomType`
+       - Sức chứa: `selectedRoom.maxOccupancy` người
+       - View: `selectedRoom.view` (hướng biển, hướng núi, hướng thành phố, v.v.)
+       - Tiện nghi: `selectedRoom.amenities` (nếu có)
+       - Hình ảnh: `selectedRoom.image` (nếu có)
+     - **QUAN TRỌNG:** Bot PHẢI gửi 2 link cho khách:
+       - Link xem chi tiết phòng: `/rooms/[roomId]` - để khách xem đầy đủ thông tin, hình ảnh, tiện nghi
+       - Link đặt phòng: `/booking?roomId=[roomId]&...` - để khách đặt phòng trực tiếp (đã điền sẵn thông tin nếu có)
+     - Xác nhận: "Tuyệt vời! Quý khách đã chọn **[Tên phòng]**.\n\n" +
+       "📋 **Chi tiết phòng:**\n" +
+       "• Loại: [Loại phòng]\n" +
+       "• Giá: [Giá] VNĐ/đêm\n" +
+       "• Sức chứa: [Số người] người\n" +
+       "• View: [View]\n" +
+       "• Tiện nghi: [Danh sách tiện nghi]\n\n" +
+       "🔍 [Xem chi tiết phòng](link xem chi tiết)\n" +
+       "📝 [Đặt phòng ngay](link đặt phòng)\n\n" +
+       "Để hoàn tất đặt phòng, vui lòng cung cấp ngày nhận/trả phòng, họ tên, email và số điện thoại của quý khách ạ. 😊"
+     - **KHÔNG được hiển thị danh sách phòng khác hoặc gợi ý phòng khác**
    
-  3. **Kiểm tra thông tin còn thiếu:**
+  3. **Kiểm tra thông tin còn thiếu (SAU KHI ĐÃ HIỂN THỊ CHI TIẾT PHÒNG):**
      - Nếu chưa có ngày check-in/out hoặc số người:
        - Hỏi trong 1 câu duy nhất: "Để hoàn tất đặt phòng, bạn vui lòng cho tôi biết: Ngày nhận phòng và ngày trả phòng? Số lượng người?"
      - Nếu đã có đủ thông tin:
        - Tính giá tổng và nêu chính sách đầy đủ ngay
        - Tạo booking link và gửi cho khách
+     - **LƯU Ý:** Sau khi hiển thị chi tiết phòng, KHÔNG được hiển thị danh sách phòng khác nữa
    
   4. **Xử lý khi khách chỉ cung cấp ngày (sau khi đã chọn phòng):**
      - Nếu khách đã chọn phòng từ list trước đó và chỉ cung cấp ngày (ví dụ: "ngày nhận là 28/12 ngày trả là ngày 30/12"):
@@ -335,7 +494,63 @@ Tài liệu này tổng hợp các “trend kịch bản” ưu tiên cho chatbo
 
 ---
 
-## 4. Hướng dẫn triển khai vào chatbot RAG
+## 4. Dịch vụ Khách sạn Scenarios
+
+### 4.1 Câu hỏi về dịch vụ ăn uống
+- **Trigger:** "có dịch vụ ăn sáng không?", "breakfast", "ăn sáng có bao gồm không?", "nhà hàng", "room service", "buffet sáng"
+- **Luồng trả lời:**
+  1. **Trả lời chi tiết về dịch vụ ăn uống:**
+     - **Nhà hàng chính:** Phục vụ bữa sáng, trưa, tối
+     - **Bar & Lounge:** Đồ uống và snack từ 10:00 - 24:00
+     - **Room Service:** Phục vụ 24/7
+     - **Buffet sáng:** 6:30 - 10:00 hàng ngày
+  2. **Về việc ăn sáng có bao gồm trong giá phòng:**
+     - Nếu khách hỏi về phòng cụ thể: Kiểm tra thông tin phòng trong database hoặc generated-data.md
+     - Nếu không có thông tin cụ thể: "Ăn sáng có thể được bao gồm tùy theo gói đặt phòng hoặc loại phòng. Để biết chi tiết chính xác, quý khách vui lòng liên hệ hotline 0901 234 567 hoặc kiểm tra khi đặt phòng."
+     - **QUAN TRỌNG:** KHÔNG chỉ hướng dẫn liên hệ hotline, PHẢI cung cấp thông tin có sẵn trước (giờ phục vụ, loại dịch vụ)
+  3. **Gợi ý:** Nếu khách đang đặt phòng, nhắc họ có thể thêm dịch vụ ăn sáng vào booking
+
+### 4.2 Câu hỏi về dịch vụ Spa & Wellness
+- **Trigger:** "spa", "gym", "bể bơi", "pool", "xông hơi", "massage", "wellness", "fitness"
+- **Luồng trả lời:**
+  1. **Trả lời chi tiết:**
+     - **Spa:** Có các liệu pháp massage (chi tiết từ services.md hoặc database)
+     - **Phòng gym:** Hiện đại, miễn phí (nếu có thông tin từ generated-data.md)
+     - **Bể bơi:** Ngoài trời, miễn phí cho khách lưu trú
+     - **Phòng xông hơi:** Có sẵn
+  2. **Giờ hoạt động:** Cung cấp nếu có trong database hoặc knowledge base
+  3. **Phí:** Nêu rõ miễn phí hay có phí, phí bao nhiêu (nếu có thông tin)
+  4. **QUAN TRỌNG:** PHẢI cung cấp thông tin chi tiết từ services.md, không chỉ hướng dẫn liên hệ
+
+### 4.3 Câu hỏi về dịch vụ khác
+- **Trigger:** "đưa đón sân bay", "airport transfer", "giặt ủi", "laundry", "đổi tiền", "parking", "bãi đỗ xe", "bảo vệ"
+- **Luồng trả lời:**
+  1. **Đưa đón sân bay:** Có dịch vụ (có phụ phí), cung cấp thông tin đặt trước nếu có
+  2. **Dịch vụ giặt ủi:** Có sẵn, cung cấp thông tin giá và thời gian nếu có
+  3. **Bãi đỗ xe:** Miễn phí
+  4. **Bảo vệ:** 24/7
+  5. **QUAN TRỌNG:** PHẢI cung cấp thông tin từ services.md, không chỉ hướng dẫn liên hệ hotline
+
+### 4.4 Nguyên tắc trả lời về dịch vụ (QUAN TRỌNG)
+- **PHẢI trả lời chi tiết** dựa trên thông tin trong `services.md`, `rooms-info.md`, `generated-data.md`
+- **KHÔNG chỉ hướng dẫn liên hệ hotline** mà PHẢI cung cấp thông tin có sẵn trước
+- **Nếu thiếu thông tin:** Mới hướng dẫn liên hệ hotline 0901 234 567 để được tư vấn cụ thể hơn
+- **Ưu tiên:** Thông tin từ knowledge base > Thông tin từ database > Hướng dẫn liên hệ
+- **Format trả lời:** Ngắn gọn, rõ ràng, có cấu trúc (bullet points nếu nhiều dịch vụ)
+- **Ví dụ trả lời tốt:**
+  ```
+  Rayal Park Hotel có đầy đủ dịch vụ ăn uống:
+  • Nhà hàng chính: Phục vụ bữa sáng, trưa, tối
+  • Bar & Lounge: Đồ uống và snack từ 10:00 - 24:00
+  • Room Service: Phục vụ 24/7
+  • Buffet sáng: 6:30 - 10:00 hàng ngày
+  
+  Về việc ăn sáng có bao gồm trong giá phòng, tùy theo gói đặt phòng. Để biết chi tiết chính xác cho phòng của bạn, vui lòng liên hệ hotline 0901 234 567.
+  ```
+
+---
+
+## 5. Hướng dẫn triển khai vào chatbot RAG
 
 1. **Ưu tiên nạp file này** cùng `faq.md`, `policies.md`, `rooms-info.md`, `services.md` vào vector store (script `scripts/ingestKnowledgeBase.js`).
    - **QUAN TRỌNG:** Tất cả logic và kịch bản phải được lưu trong knowledge base, KHÔNG hardcode trong controller
@@ -346,6 +561,7 @@ Tài liệu này tổng hợp các “trend kịch bản” ưu tiên cho chatbo
 
 3. **Prompt đề xuất cho AI:**
    - "Nếu câu hỏi liên quan đến đặt phòng/hủy/khuyến mãi → tham chiếu `chatbot-scenarios.md` trước, sau đó kết hợp dữ liệu phòng/dịch vụ."
+   - "Nếu câu hỏi liên quan đến dịch vụ khách sạn (ăn uống, spa, gym, bể bơi, đưa đón sân bay, etc.) → tham chiếu `chatbot-scenarios.md` section 4 và `services.md` để trả lời CHI TIẾT. KHÔNG chỉ hướng dẫn liên hệ hotline, PHẢI cung cấp thông tin có sẵn trước."
    - "Khi khách muốn đặt phòng: (1) Thu thập thông tin (ngày, số người, loại phòng) → (2) Gọi API GET /api/rooms để lấy list phòng → (3) Hiển thị list gợi ý → (4) Khách chọn phòng → (5) Tính giá tổng và nêu chính sách → (6) Tạo link /booking?roomId=XXX&checkIn=...&checkOut=... và gửi cho khách."
    - **QUAN TRỌNG về chọn phòng từ list:**
      - "Khi khách chọn phòng từ list đã hiển thị (ví dụ: 'phòng số 1', 'chọn phòng số 2'):"
@@ -359,6 +575,20 @@ Tài liệu này tổng hợp các “trend kịch bản” ưu tiên cho chatbo
    - `GET /api/rooms?roomType=X&maxOccupancy=Y&isAvailable=1` - Lấy danh sách phòng phù hợp
    - `POST /api/bookings` - Tạo booking trực tiếp với body: `{ roomId, roomQuantity, checkInDate, checkOutDate, totalPrice, userId }`
    - Response từ POST /api/bookings sẽ có `booking._id` để tạo link `/booking?bookingId=XXX`
+
+5. **Xử lý trẻ em linh hoạt (QUAN TRỌNG):**
+   - Bot PHẢI parse được các pattern đa dạng:
+     * "2 người lớn 1 trẻ em 9 tuổi"
+     * "2 người lớn 2 trẻ em 5 và 8 tuổi"
+     * "3 người lớn 2 trẻ em 6 và 9 tuổi"
+     * "2 người lớn 3 trẻ em 4, 7 và 12 tuổi"
+     * "1 người lớn 1 trẻ em 10 tuổi"
+   - Bot PHẢI tính phụ thu riêng cho TỪNG trẻ dựa trên tuổi:
+     * Trẻ dưới 6 tuổi: miễn phí
+     * Trẻ 6-11 tuổi: 50% giá người lớn
+     * Trẻ từ 12 tuổi trở lên: 100% giá người lớn
+   - Bot PHẢI hiển thị chi tiết phụ thu cho từng trẻ khi có nhiều trẻ với tuổi khác nhau
+   - Bot PHẢI giải thích chính sách rõ ràng cho từng trẻ
 
 5. **Context Management (Controller xử lý):**
    - Controller lưu `lastRoomSearchResults` vào session context khi tìm được phòng
