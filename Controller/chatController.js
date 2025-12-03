@@ -5,6 +5,7 @@ import Booking from "../Models/BookingModel.js";
 import crypto from "crypto";
 import dotenv from "dotenv";
 import { detectLanguage, getLanguage } from "../utils/languageDetector.js";
+import googleCalendarService from "../services/googleCalendarService.js";
 
 dotenv.config();
 
@@ -419,7 +420,7 @@ const checkRoomAvailability = async (roomId, checkInDate, checkOutDate) => {
     checkIn.setHours(0, 0, 0, 0);
     checkOut.setHours(0, 0, 0, 0);
 
-    // Kiểm tra booking overlap
+    // ✅ BƯỚC 1: Kiểm tra booking overlap từ Database (chính)
     const overlappingBooking = await Booking.findOne({
       room: roomId,
       status: { $in: ['pending', 'confirmed'] }, // Chỉ check pending và confirmed
@@ -431,7 +432,32 @@ const checkRoomAvailability = async (roomId, checkInDate, checkOutDate) => {
       ],
     });
 
-    return !overlappingBooking; // Trả về true nếu không có booking overlap
+    if (overlappingBooking) {
+      return false; // Có booking overlap trong Database
+    }
+
+    // ✅ BƯỚC 2: Kiểm tra conflict từ Google Calendar (backup, optional)
+    try {
+      // Lấy thông tin phòng để có roomNumber
+      const room = await Room.findById(roomId).lean();
+      if (room && room.roomNumber) {
+        const hasCalendarConflict = await googleCalendarService.checkBookingConflict(
+          checkIn,
+          checkOut,
+          room.roomNumber
+        );
+        
+        if (hasCalendarConflict) {
+          console.warn(`⚠️ Calendar conflict detected for room ${room.roomNumber}`);
+          return false; // Có conflict trong Calendar
+        }
+      }
+    } catch (calendarError) {
+      // Nếu Calendar check fail, không block booking (vì Database là source of truth)
+      console.warn('⚠️ Calendar check failed (non-blocking):', calendarError.message);
+    }
+
+    return true; // Không có conflict, phòng available
   } catch (error) {
     console.error("Error checking room availability:", error);
     return false; // Nếu có lỗi, coi như không available
@@ -1608,14 +1634,18 @@ const getAIResponse = async (userMessage, context = {}, conversationHistory = []
           prompt += `\n\n${bookingErrorContext}\n\n`;
         } else if (bookingContextFallback.needPersonalInfo) {
           // ✅ CHƯA có đủ thông tin - KHÔNG được nói "đã hoàn tất"
+          // ✅ QUAN TRỌNG: Chỉ hỏi thông tin cá nhân khi user ĐÃ CHỌN PHÒNG
+          const hasSelectedRoom = context.selectedRoom || bookingContextFallback.roomId;
           const needInfoContext = language === 'vi'
             ? `⚠️⚠️⚠️ QUAN TRỌNG: CHƯA tạo booking! Cần thu thập thông tin cá nhân (tên, email, số điện thoại) để tạo booking.\n` +
+              `${hasSelectedRoom ? '' : '⚠️⚠️⚠️ LƯU Ý: Khách hàng CHƯA chọn phòng. Bạn KHÔNG được hỏi thông tin cá nhân cho đến khi khách đã chọn phòng từ danh sách.\n'}` +
               `Bạn KHÔNG được nói "đã hoàn tất đặt phòng" hoặc "đã tạo đơn đặt phòng".\n` +
-              `Bạn PHẢI hỏi thông tin còn thiếu (đặc biệt là EMAIL - bắt buộc).\n` +
+              `${hasSelectedRoom ? 'Bạn PHẢI hỏi thông tin còn thiếu (đặc biệt là EMAIL - bắt buộc).\n' : 'Bạn PHẢI yêu cầu khách chọn phòng trước khi hỏi thông tin cá nhân.\n'}` +
               `Tham khảo chatbot-scenarios.md section 1.1 bước 5 để thu thập thông tin.`
             : `⚠️⚠️⚠️ IMPORTANT: Booking NOT created yet! Need to collect personal information (name, email, phone) to create booking.\n` +
+              `${hasSelectedRoom ? '' : '⚠️⚠️⚠️ NOTE: Customer has NOT selected a room yet. You MUST NOT ask for personal information until customer has selected a room from the list.\n'}` +
               `You MUST NOT say "booking completed" or "booking created".\n` +
-              `You MUST ask for missing information (especially EMAIL - required).\n` +
+              `${hasSelectedRoom ? 'You MUST ask for missing information (especially EMAIL - required).\n' : 'You MUST ask customer to select a room first before asking for personal information.\n'}` +
               `Refer to chatbot-scenarios.md section 1.1 step 5 to collect information.`;
           prompt += `\n\n${needInfoContext}\n\n`;
         } else if (bookingContextFallback.needLogin) {
@@ -1647,17 +1677,20 @@ const getAIResponse = async (userMessage, context = {}, conversationHistory = []
         // ✅ QUAN TRỌNG: Nếu đã tự động tìm phòng (autoSearchedRooms), bot PHẢI hiển thị room cards ngay
         if (context.autoSearchedRooms && roomSearchResults && roomSearchResults.length > 0) {
           const autoSearchLabel = language === 'vi' ? 'CONTEXT: ĐÃ TỰ ĐỘNG TÌM PHÒNG' : 'CONTEXT: AUTO-SEARCHED ROOMS';
+          const hasSelectedRoom = context.selectedRoom || bookingContext.roomId;
           const autoSearchContext = language === 'vi'
-            ? `⚠️⚠️⚠️ QUAN TRỌNG: Khách hàng đã cung cấp đủ thông tin (ngày check-in/out, số người, email, phone).\n` +
+            ? `⚠️⚠️⚠️ QUAN TRỌNG: Khách hàng đã cung cấp thông tin (ngày check-in/out, số người).\n` +
               `Bạn ĐÃ TỰ ĐỘNG tìm phòng trống và tìm thấy ${roomSearchResults.length} phòng phù hợp.\n` +
               `Bạn PHẢI hiển thị danh sách phòng này với room cards (frontend sẽ hiển thị tự động).\n` +
               `Bạn KHÔNG được hỏi lại về việc tìm phòng hoặc hỏi "bạn muốn chúng tôi tự động kiểm tra phòng hay không".\n` +
+              `${hasSelectedRoom ? '' : '⚠️⚠️⚠️ QUAN TRỌNG: Khách hàng CHƯA chọn phòng. Bạn CHỈ được trả lời ngắn gọn về danh sách phòng và yêu cầu khách chọn phòng. Bạn KHÔNG được hỏi thông tin cá nhân (Họ tên, Email, SĐT) cho đến khi khách đã chọn phòng.\n'}` +
               `Bạn PHẢI trả lời ngắn gọn: "Tôi đã tự động kiểm tra và tìm thấy [X] phòng phù hợp với yêu cầu của quý khách. Vui lòng xem chi tiết các phòng bên dưới và chọn phòng bạn muốn đặt."\n` +
               `Sau đó frontend sẽ tự động hiển thị room cards với button "Xem chi tiết" cho từng phòng.`
-            : `⚠️⚠️⚠️ IMPORTANT: Customer has provided complete information (check-in/out dates, number of guests, email, phone).\n` +
+            : `⚠️⚠️⚠️ IMPORTANT: Customer has provided information (check-in/out dates, number of guests).\n` +
               `You HAVE AUTO-SEARCHED for available rooms and found ${roomSearchResults.length} suitable rooms.\n` +
               `You MUST display this room list with room cards (frontend will display automatically).\n` +
               `You MUST NOT ask again about searching for rooms or ask "would you like us to automatically check rooms".\n` +
+              `${hasSelectedRoom ? '' : '⚠️⚠️⚠️ IMPORTANT: Customer has NOT selected a room yet. You MUST ONLY respond briefly about the room list and ask customer to choose a room. You MUST NOT ask for personal information (name, email, phone) until customer has selected a room.\n'}` +
               `You MUST respond briefly: "I have automatically checked and found [X] rooms suitable for your requirements. Please see the room details below and choose the room you want to book."\n` +
               `Then frontend will automatically display room cards with "View Details" button for each room.`;
           
@@ -2412,7 +2445,10 @@ export const chatWithAI = asyncHandler(async (req, res) => {
       bookingContext.email &&
       bookingContext.phone
     );
-    bookingContext.needPersonalInfo = !hasAllPersonalInfo;
+    // ✅ QUAN TRỌNG: Chỉ set needPersonalInfo = true khi user ĐÃ CHỌN PHÒNG
+    // Nếu chưa chọn phòng, KHÔNG hỏi thông tin cá nhân
+    const hasSelectedRoomForPersonalInfo = !!(context.selectedRoom || bookingContext.roomId);
+    bookingContext.needPersonalInfo = !hasAllPersonalInfo && hasSelectedRoomForPersonalInfo;
     
     // ✅ LƯU Ý: Logic auto-search đã được di chuyển vào getAIResponse function (dòng 1056-1103)
     // để tránh lỗi scope với roomSearchResults
@@ -2613,6 +2649,39 @@ export const chatWithAI = asyncHandler(async (req, res) => {
             roomType: selectedRoom.roomType,
             matchesRequest: true
           });
+          
+          // ✅ VALIDATION: Kiểm tra lại availability trước khi chọn phòng
+          if (bookingContext.checkInDate && bookingContext.checkOutDate) {
+            const isStillAvailable = await checkRoomAvailability(
+              selectedRoom._id,
+              bookingContext.checkInDate,
+              bookingContext.checkOutDate
+            );
+            
+            if (!isStillAvailable) {
+              // Phòng đã bị book bởi người khác, thông báo và gợi ý phòng khác
+              console.warn(`⚠️ Room ${selectedRoom.name} is no longer available for selected dates`);
+              context.roomNoLongerAvailable = {
+                roomName: selectedRoom.name,
+                roomId: selectedRoom._id.toString(),
+                checkIn: bookingContext.checkInDate,
+                checkOut: bookingContext.checkOutDate
+              };
+              
+              // Xóa phòng không còn trống khỏi lastRoomSearchResults
+              context.lastRoomSearchResults = context.lastRoomSearchResults.filter(
+                r => r._id.toString() !== selectedRoom._id.toString()
+              );
+              
+              // Nếu còn phòng khác, gợi ý lại
+              if (context.lastRoomSearchResults.length > 0) {
+                context.shouldSuggestAlternativeRooms = true;
+              }
+              
+              // Không set selectedRoom, để AI biết và trả lời user
+              return; // Dừng xử lý, để AI trả lời user
+            }
+          }
           
           bookingContext.roomId = selectedRoom._id.toString();
           bookingContext.roomName = selectedRoom.name;

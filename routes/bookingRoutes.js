@@ -3,6 +3,8 @@ import {
   createBooking,
   getAllBookings,
   getBookingById,
+  getMyBookings,
+  updateBooking,
   // deleteBooking,
   cancelBooking,
   confirmBooking,
@@ -14,11 +16,17 @@ const router = express.Router();
 // Đặt phòng mới
 router.post("/", verifyToken, createBooking);
 
+// Lấy đơn đặt phòng của user hiện tại
+router.get("/my-bookings", verifyToken, getMyBookings);
+
 // Lấy tất cả đặt phòng (chỉ admin)
 router.get("/", verifyToken, isAdmin, getAllBookings);
 
 // Lấy chi tiết đặt phòng theo ID
 router.get("/:id", verifyToken, getBookingById);
+
+// Cập nhật đặt phòng
+router.put("/:id", verifyToken, updateBooking);
 
 // Xoá đặt phòng (admin hoặc user đều có thể tuỳ bạn thêm điều kiện kiểm tra)
 // router.delete("/:id", verifyToken, isAdmin, deleteBooking);

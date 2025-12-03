@@ -1,6 +1,7 @@
 import asyncHandler from "express-async-handler";
 import Room from "../Models/RoomModel.js";
 import Location from "../Models/LocationModel.js";
+import Booking from "../Models/BookingModel.js";
 
 // Tạo phòng mới (hỗ trợ upload ảnh) (phía admin)
 export const createRoom = asyncHandler(async (req, res) => {
@@ -152,4 +153,132 @@ export const deleteRoom = asyncHandler(async (req, res) => {
     throw new Error("Không tìm thấy phòng!");
   }
   res.json({ message: "Xóa phòng thành công!" });
+});
+
+// ✅ Tìm kiếm phòng với filter theo ngày (check availability)
+// @route   GET /api/rooms/search
+export const searchRooms = asyncHandler(async (req, res) => {
+  try {
+    const { 
+      checkInDate, 
+      checkOutDate, 
+      maxOccupancy, 
+      roomType, 
+      view,
+      minPrice,
+      maxPrice
+    } = req.query;
+
+    // Validate dates nếu có
+    if (checkInDate && checkOutDate) {
+      const checkIn = new Date(checkInDate);
+      const checkOut = new Date(checkOutDate);
+      
+      if (checkIn >= checkOut) {
+        return res.status(400).json({
+          success: false,
+          message: "Ngày check-out phải sau ngày check-in"
+        });
+      }
+    }
+
+    // Build filter
+    let filter = {
+      available: true,
+      isAvailable: { $gt: 0 }
+    };
+
+    // Filter theo số người
+    if (maxOccupancy) {
+      const maxOccupancyNum = parseInt(maxOccupancy);
+      const maxOccupancyLimit = maxOccupancyNum + 2;
+      filter.maxOccupancy = { 
+        $gte: maxOccupancyNum,
+        $lte: maxOccupancyLimit
+      };
+    }
+
+    // Filter theo loại phòng
+    if (roomType) {
+      filter.roomType = roomType;
+    }
+
+    // Filter theo view
+    if (view) {
+      filter.view = { $regex: view, $options: "i" };
+    }
+
+    // Filter theo giá
+    if (minPrice || maxPrice) {
+      filter.pricePerNight = {};
+      if (minPrice) filter.pricePerNight.$gte = parseFloat(minPrice);
+      if (maxPrice) filter.pricePerNight.$lte = parseFloat(maxPrice);
+    }
+
+    // Lấy tất cả phòng phù hợp
+    let rooms = await Room.find(filter)
+      .populate("location", "address province city")
+      .lean();
+
+    // Ưu tiên phòng có maxOccupancy chính xác với yêu cầu
+    if (maxOccupancy) {
+      const maxOccupancyNum = parseInt(maxOccupancy);
+      const exactMatchRooms = rooms.filter(r => r.maxOccupancy === maxOccupancyNum);
+      const largerRooms = rooms.filter(r => r.maxOccupancy > maxOccupancyNum);
+      largerRooms.sort((a, b) => a.maxOccupancy - b.maxOccupancy);
+      rooms = [...exactMatchRooms, ...largerRooms];
+    } else {
+      rooms.sort((a, b) => a.maxOccupancy - b.maxOccupancy);
+    }
+
+    // ✅ Check availability nếu có dates
+    if (checkInDate && checkOutDate) {
+      const checkIn = new Date(checkInDate);
+      const checkOut = new Date(checkOutDate);
+      checkIn.setHours(0, 0, 0, 0);
+      checkOut.setHours(0, 0, 0, 0);
+
+      const availableRooms = [];
+      
+      for (const room of rooms) {
+        // Kiểm tra booking overlap
+        const overlappingBooking = await Booking.findOne({
+          room: room._id,
+          status: { $in: ['pending', 'confirmed'] },
+          $or: [
+            {
+              checkInDate: { $lt: checkOut },
+              checkOutDate: { $gt: checkIn },
+            },
+          ],
+        });
+
+        if (!overlappingBooking) {
+          availableRooms.push(room);
+        }
+      }
+
+      rooms = availableRooms;
+    }
+
+    res.json({
+      success: true,
+      data: rooms,
+      count: rooms.length,
+      filters: {
+        checkInDate: checkInDate || null,
+        checkOutDate: checkOutDate || null,
+        maxOccupancy: maxOccupancy || null,
+        roomType: roomType || null,
+        view: view || null
+      }
+    });
+  } catch (error) {
+    console.error("Error in searchRooms:", error);
+    res.status(500).json({
+      success: false,
+      message: "Lỗi server khi tìm kiếm phòng",
+      error: error.message
+    });
+  }
 }); 

@@ -46,6 +46,10 @@ const bookingSchema = new mongoose.Schema(
       type: String,
       default: "",
     },
+    calendarEventId: {
+      type: String,
+      default: null,
+    }, // ID của event trong Google Calendar
     createdAt: { type: Date, default: Date.now },
   },
   {

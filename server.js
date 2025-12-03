@@ -15,9 +15,26 @@ import specialRequestRoutes from "./routes/specialRequestRoutes.js";
 import contactRoutes from "./routes/contactRoutes.js";
 import nearbyPlaceRoutes from "./routes/nearbyPlaceRoutes.js";
 import "./Controller/telegramBotController.js";
+import googleCalendarService from "./services/googleCalendarService.js";
+import googleSheetsService from "./services/googleSheetsService.js";
 
 // Load biến môi trường từ .env
 dotenv.config();
+
+// Khởi tạo Google Services khi server start
+(async () => {
+  try {
+    await googleCalendarService.initialize();
+  } catch (error) {
+    console.error('❌ Failed to initialize Google Calendar Service:', error.message);
+  }
+  
+  try {
+    await googleSheetsService.initialize();
+  } catch (error) {
+    console.error('❌ Failed to initialize Google Sheets Service:', error.message);
+  }
+})();
 
 // Khởi tạo app
 const app = express();
