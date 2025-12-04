@@ -100,7 +100,7 @@ Tài liệu này tổng hợp các “trend kịch bản” ưu tiên cho chatbo
        - Bot KHÔNG được tìm lại phòng từ database
        - Bot PHẢI sử dụng chính xác thông tin phòng từ list (tên, giá, loại, sức chứa)
     - **⚠️⚠️⚠️ QUAN TRỌNG:** Sau khi khách chọn phòng, bot PHẢI trả lời theo format sau:
-      - Xác nhận: "Tuyệt vời! Bạn đã chọn [Tên phòng] với giá [Giá] VNĐ/đêm."
+     - Xác nhận: "Tuyệt vời! Bạn đã chọn [Tên phòng] với giá [Giá] VNĐ/đêm."
       - Hiển thị thông tin phòng đã chọn (tên, giá, loại, sức chứa, view, tiện nghi, tổng giá nếu có ngày)
       - Kết thúc với message: "Hãy nhấn vào card phòng bên dưới để xem chi tiết và đặt phòng. Mọi thắc mắc xin quay lại chat để tiếp tục hỏi nhé."
       - Bot PHẢI tạo và trả về `roomDetailLink` để frontend hiển thị nút "Xem chi tiết phòng" trong card
@@ -145,8 +145,8 @@ Tài liệu này tổng hợp các “trend kịch bản” ưu tiên cho chatbo
      - **Nếu CHƯA có ngày check-in/out nhưng ĐÃ biết phòng và số người lớn (adults / maxOccupancy):**
        - KHÔNG hỏi lại "số lượng người".
        - Hỏi: 
-       "Để hoàn tất đặt phòng, bạn vui lòng cho tôi biết:
-       - Ngày nhận phòng và ngày trả phòng?
+         "Để hoàn tất đặt phòng, bạn vui lòng cho tôi biết:
+         - Ngày nhận phòng và ngày trả phòng?
        - Trong đoàn có **trẻ em đi kèm không**? Nếu có, khoảng **bao nhiêu bé và tầm mấy tuổi**?"
        - Sau khi có thông tin, tính giá tổng (bao gồm phụ thu trẻ em nếu có) và nêu đầy đủ chính sách.
      - **Nếu HOÀN TOÀN chưa có thông tin về số người (không có adults / maxOccupancy):**
@@ -599,5 +599,293 @@ Tài liệu này tổng hợp các “trend kịch bản” ưu tiên cho chatbo
 
 6. **Theo dõi 4 KPI:** tỉ lệ giải đáp đủ thông tin, số lần chuyển người thật, % mã áp dụng thành công, CSAT sau chat.
 
-Tài liệu này bao phủ các hành vi chiếm ~85% câu hỏi phổ biến (đặt phòng, khuyến mãi, thanh toán, hủy đổi, dịch vụ phụ). Các tình huống đặc thù (sự kiện lớn, đoàn MICE) có thể bổ sung thêm sub-scenario khi phát sinh.
+---
+
+## 6. Hotel Information & Discovery Scenarios
+
+### 6.1 Câu hỏi về Lịch Sử Hình Thành Khách Sạn
+- **Trigger:** "lịch sử khách sạn", "khách sạn thành lập khi nào", "khách sạn có từ bao giờ", "câu chuyện khách sạn", "hành trình phát triển", "khách sạn bao nhiêu năm", "tiêu chuẩn 5 sao", "giải thưởng khách sạn", "khách sạn được thành lập năm nào", "lịch sử rayal park hotel"
+- **Luồng trả lời:**
+  1. **Giới thiệu ngắn gọn:**
+     - "Rayal Park Hotel được thành lập vào năm 2010 với tầm nhìn trở thành điểm đến nghỉ dưỡng hàng đầu tại Việt Nam. Từ một dự án nhỏ với 20 phòng, chúng tôi đã bắt đầu hành trình mang đến trải nghiệm nghỉ dưỡng đẳng cấp cho khách hàng."
+  
+  2. **Timeline chi tiết theo từng giai đoạn:**
+     - **2010 - Khởi Nghiệp:**
+       - "Năm 2010, Rayal Park Hotel được thành lập với 20 phòng đầu tiên. Chúng tôi bắt đầu hành trình với tầm nhìn trở thành điểm đến nghỉ dưỡng hàng đầu tại Việt Nam."
+     
+     - **2015 - Mở Rộng Quy Mô:**
+       - "Năm 2015, chúng tôi mở rộng lên 50 phòng cao cấp với đầy đủ tiện nghi hiện đại. Khách sạn được công nhận đạt tiêu chuẩn 4 sao và nhận được nhiều giải thưởng về chất lượng dịch vụ."
+     
+     - **2020 - Đạt Tiêu Chuẩn 5 Sao:**
+       - "Sau 10 năm phát triển, năm 2020 Rayal Park Hotel chính thức đạt tiêu chuẩn 5 sao quốc tế. Chúng tôi tự hào là một trong những khách sạn hàng đầu với dịch vụ hoàn hảo, tiện nghi hiện đại và đội ngũ nhân viên chuyên nghiệp."
+     
+     - **2024 - Hiện Tại & Tương Lai:**
+       - "Ngày nay, Rayal Park Hotel tiếp tục đổi mới và nâng cao chất lượng dịch vụ. Chúng tôi cam kết mang đến trải nghiệm nghỉ dưỡng tuyệt vời nhất cho mọi khách hàng và hướng tới mục tiêu trở thành khách sạn hàng đầu khu vực Đông Nam Á."
+  
+  3. **Thành tựu nổi bật:**
+     - Giải thưởng "Khách sạn tốt nhất năm 2023"
+     - Chứng nhận 5 sao quốc tế
+     - Top 10 khách sạn hàng đầu Việt Nam
+  
+  4. **Gợi ý mở rộng:**
+     - "Bạn có muốn tìm hiểu thêm về chủ khách sạn hoặc các tính năng mới của chúng tôi không?"
+     - "Bạn có thể xem đầy đủ thông tin trong phần 'Khám Phá Ngay' trên trang chủ."
+
+- **Biến thể:**
+  - Khách hỏi cụ thể về một năm → Trả lời chi tiết về giai đoạn đó
+  - Khách hỏi về giải thưởng → Liệt kê các giải thưởng và thành tựu
+  - Khách hỏi về tương lai → Nêu tầm nhìn và mục tiêu phát triển
+
+### 6.2 Câu hỏi về Chủ Khách Sạn
+- **Trigger:** "chủ khách sạn là ai", "ai là chủ sở hữu", "người sáng lập", "giám đốc khách sạn", "thành tựu khách sạn", "triết lý kinh doanh", "chủ tịch khách sạn", "người điều hành khách sạn", "owner của khách sạn"
+- **Luồng trả lời:**
+  1. **Giới thiệu chủ khách sạn:**
+     - "Chủ tịch & Nhà sáng lập Rayal Park Hotel là **Nguyễn Văn A**, một doanh nhân thành đạt với hơn 20 năm kinh nghiệm trong ngành khách sạn và du lịch."
+  
+  2. **Tiểu sử:**
+     - "Với tầm nhìn xa và đam mê mang đến trải nghiệm nghỉ dưỡng đẳng cấp, ông đã sáng lập Rayal Park Hotel vào năm 2010."
+     - "Dưới sự lãnh đạo của ông, khách sạn đã phát triển từ một dự án nhỏ trở thành một trong những khách sạn 5 sao hàng đầu tại Việt Nam, được công nhận bởi nhiều tổ chức quốc tế."
+     - "Ông luôn đặt khách hàng làm trung tâm và cam kết mang đến dịch vụ hoàn hảo nhất cho mọi du khách."
+  
+  3. **Thành tựu nổi bật:**
+     - Giải thưởng "Khách sạn tốt nhất năm 2023"
+     - Chứng nhận 5 sao quốc tế
+     - Top 10 khách sạn hàng đầu Việt Nam
+  
+  4. **Triết lý kinh doanh:**
+     - "Khách hàng là trung tâm của mọi hoạt động. Chúng tôi không chỉ cung cấp dịch vụ lưu trú, mà còn tạo ra những kỷ niệm đáng nhớ cho mỗi du khách."
+  
+  5. **Gợi ý mở rộng:**
+     - "Bạn có muốn tìm hiểu thêm về lịch sử hình thành hoặc các tính năng mới của khách sạn không?"
+     - "Bạn có thể xem đầy đủ thông tin trong phần 'Khám Phá Ngay' trên trang chủ."
+
+- **Biến thể:**
+  - Khách hỏi về kinh nghiệm → Nêu số năm kinh nghiệm và thành tựu
+  - Khách hỏi về triết lý → Trích dẫn triết lý kinh doanh
+  - Khách hỏi về tầm nhìn → Nêu tầm nhìn phát triển khách sạn
+
+### 6.3 Câu hỏi về Tính Năng Mới
+- **Trigger:** "tính năng mới", "công nghệ mới", "chatbot AI", "đặt phòng online", "quản lý booking", "google calendar", "thanh toán online", "địa điểm gần", "tiện ích mới", "tính năng nổi bật", "công nghệ khách sạn", "dịch vụ mới"
+- **Luồng trả lời:**
+  1. **Giới thiệu tổng quan:**
+     - "Rayal Park Hotel đã triển khai nhiều tính năng mới để nâng cao trải nghiệm khách hàng. Dưới đây là 6 tính năng nổi bật nhất:"
+  
+  2. **Liệt kê chi tiết từng tính năng:**
+     
+     **a) Chatbot AI Thông Minh:**
+     - "Trải nghiệm dịch vụ hỗ trợ 24/7 với chatbot AI thông minh. Đặt phòng, tìm hiểu dịch vụ, hoặc nhận tư vấn ngay lập tức qua chat trực tuyến."
+     - "Hỗ trợ đa ngôn ngữ (Tiếng Việt & Tiếng Anh)"
+     - "Bạn đang sử dụng tính năng này ngay bây giờ! 😊"
+     
+     **b) Đặt Phòng Tức Thì:**
+     - "Đặt phòng ngay từ chat, không cần rời khỏi trang web. Hệ thống tự động kiểm tra phòng trống và xác nhận đặt phòng trong vài giây."
+     - "Xác nhận tức thời, thanh toán linh hoạt"
+     - "Bạn có thể đặt phòng ngay bằng cách nói 'Tôi muốn đặt phòng' hoặc nhấn vào nút 'Đặt phòng ngay' trên trang web."
+     
+     **c) Đồng Bộ Lịch Google:**
+     - "Tự động thêm lịch đặt phòng vào Google Calendar của bạn. Nhận nhắc nhở và quản lý lịch trình một cách tiện lợi."
+     - "Tính năng này hoạt động tự động khi bạn đặt phòng thành công."
+     - "Không cần thao tác thủ công, hệ thống sẽ tự động đồng bộ."
+     
+     **d) Quản Lý Booking Trực Tuyến:**
+     - "Xem, chỉnh sửa hoặc hủy đặt phòng của bạn mọi lúc, mọi nơi. Tải hóa đơn, xem chi tiết và quản lý tất cả booking trong một nơi."
+     - "Chỉnh sửa dễ dàng, hủy phòng linh hoạt"
+     - "Bạn có thể truy cập phần 'Đặt phòng của tôi' sau khi đăng nhập."
+     
+     **e) Thanh Toán Đa Phương Thức:**
+     - "Hỗ trợ nhiều phương thức thanh toán: thẻ tín dụng, chuyển khoản ngân hàng, hoặc thanh toán tại khách sạn. An toàn và tiện lợi."
+     - "Bảo mật cao, thanh toán nhanh chóng"
+     - "Bạn có thể chọn phương thức thanh toán phù hợp khi đặt phòng."
+     
+     **f) Gợi Ý Địa Điểm Gần:**
+     - "Khám phá các địa điểm tham quan, nhà hàng, mua sắm gần khách sạn. Tìm hiểu khoảng cách và thời gian di chuyển để lên kế hoạch hoàn hảo."
+     - "Thông tin chi tiết, bản đồ trực quan"
+     - "Bạn có thể xem danh sách địa điểm gần trong phần 'Khám Phá Ngay' hoặc hỏi tôi về địa điểm cụ thể."
+  
+  3. **Call-to-action:**
+     - "Bạn muốn tìm hiểu chi tiết về tính năng nào? Hoặc bạn có thể nhấn vào nút 'Khám Phá Ngay' trên trang chủ để xem đầy đủ thông tin và trải nghiệm các tính năng này."
+     - "Bạn có muốn tôi hướng dẫn cách sử dụng một tính năng cụ thể không?"
+
+- **Biến thể:**
+  - Khách hỏi về một tính năng cụ thể → Trả lời chi tiết về tính năng đó và hướng dẫn sử dụng
+  - Khách hỏi "tính năng nào mới nhất" → Liệt kê tất cả và highlight tính năng mới nhất
+  - Khách muốn sử dụng ngay → Hướng dẫn cách truy cập tính năng (link, button, hoặc lệnh chat)
+
+### 6.4 Câu hỏi về Địa Điểm Gần Khách Sạn
+- **Trigger:** "địa điểm gần", "đi đâu gần khách sạn", "nhà hàng gần", "điểm tham quan", "mua sắm gần", "quán ăn gần", "đi chơi đâu", "du lịch gần", "địa điểm tham quan gần", "ăn uống gần khách sạn", "shopping gần", "bệnh viện gần", "ngân hàng gần"
+- **Luồng trả lời:**
+  1. **Giới thiệu:**
+     - "Rayal Park Hotel nằm ở vị trí thuận tiện, gần nhiều địa điểm tham quan, nhà hàng và khu mua sắm. Để tôi tìm kiếm các địa điểm gần khách sạn cho bạn."
+  
+  2. **Gọi API GET /api/nearby-places:**
+     - Controller PHẢI gọi API này để lấy danh sách địa điểm từ database
+     - Lọc các địa điểm có `isActive: true`
+     - Sắp xếp theo khoảng cách (gần nhất trước) nếu có thông tin `distance`
+  
+  3. **Phân loại và hiển thị theo category:**
+     - **Điểm Tham Quan (attraction):**
+       - Hiển thị tên, khoảng cách, thời gian di chuyển, địa chỉ, mô tả (nếu có)
+       - Icon: 🏛️ hoặc 🎯
+     
+     - **Nhà Hàng (restaurant):**
+       - Hiển thị tên, khoảng cách, thời gian di chuyển, địa chỉ, rating (nếu có), mô tả (nếu có)
+       - Icon: 🍽️
+     
+     - **Mua Sắm (shopping):**
+       - Hiển thị tên, khoảng cách, thời gian di chuyển, địa chỉ, mô tả (nếu có)
+       - Icon: 🛍️
+     
+     - **Bệnh Viện (hospital):**
+       - Hiển thị tên, khoảng cách, thời gian di chuyển, địa chỉ, số điện thoại (nếu có)
+       - Icon: 🏥
+     
+     - **Ngân Hàng/ATM (bank/atm):**
+       - Hiển thị tên, khoảng cách, thời gian di chuyển, địa chỉ
+       - Icon: 🏦 hoặc 💳
+     
+     - **Bưu Điện (post_office):**
+       - Hiển thị tên, khoảng cách, thời gian di chuyển, địa chỉ
+       - Icon: 📮
+     
+     - **Khác (other):**
+       - Hiển thị tên, khoảng cách, thời gian di chuyển, địa chỉ, mô tả (nếu có)
+       - Icon: 📍
+  
+  4. **Format trả lời mẫu:**
+     ```
+     Tôi đã tìm thấy các địa điểm gần khách sạn:
+     
+     🏛️ Điểm Tham Quan:
+     • [Tên địa điểm] - [Khoảng cách] ([Thời gian di chuyển])
+       📍 [Địa chỉ]
+       [Mô tả ngắn nếu có]
+     
+     🍽️ Nhà Hàng:
+     • [Tên nhà hàng] - [Khoảng cách] ([Thời gian di chuyển])
+       📍 [Địa chỉ]
+       ⭐ Rating: [X]/5 (nếu có)
+       [Mô tả ngắn nếu có]
+     
+     🛍️ Mua Sắm:
+     • [Tên cửa hàng] - [Khoảng cách] ([Thời gian di chuyển])
+       📍 [Địa chỉ]
+       [Mô tả ngắn nếu có]
+     
+     Bạn muốn tìm hiểu thêm về địa điểm nào không?
+     ```
+  
+  5. **Xử lý câu hỏi cụ thể:**
+     - **Nếu khách hỏi "nhà hàng gần nhất":**
+       - Lọc danh sách theo category = 'restaurant'
+       - Sắp xếp theo khoảng cách (gần nhất trước)
+       - Hiển thị top 3-5 nhà hàng
+     
+     - **Nếu khách hỏi "điểm tham quan":**
+       - Lọc danh sách theo category = 'attraction'
+       - Hiển thị tất cả điểm tham quan
+     
+     - **Nếu khách hỏi "mua sắm":**
+       - Lọc danh sách theo category = 'shopping'
+       - Hiển thị tất cả cửa hàng mua sắm
+     
+     - **Nếu khách hỏi về một địa điểm cụ thể (ví dụ: "bệnh viện"):**
+       - Lọc theo category tương ứng
+       - Hiển thị chi tiết địa điểm (địa chỉ, số điện thoại, website nếu có)
+  
+  6. **Gợi ý:**
+     - "Bạn có thể xem đầy đủ danh sách địa điểm gần khách sạn trong phần 'Khám Phá Ngay' trên trang chủ."
+     - "Bạn muốn tìm hiểu thêm về địa điểm nào không?"
+     - "Bạn có cần tôi tìm địa điểm cụ thể nào khác không? (ví dụ: bệnh viện, ngân hàng, ATM)"
+
+- **Biến thể:**
+  - Khách hỏi về khoảng cách cụ thể (ví dụ: "nhà hàng trong 500m") → Lọc và hiển thị các địa điểm trong khoảng cách đó
+  - Khách hỏi về thời gian di chuyển (ví dụ: "đi bộ 5 phút") → Lọc theo `walkingTime`
+  - Không có địa điểm nào → Thông báo: "Hiện tại chưa có thông tin địa điểm trong danh sách. Bạn có thể liên hệ hotline 0901 234 567 để được tư vấn cụ thể hơn."
+  - API lỗi hoặc không có dữ liệu → Thông báo lỗi và hướng dẫn liên hệ hotline
+
+### 6.5 Câu hỏi Tổng hợp "Khám Phá"
+- **Trigger:** "khám phá", "tìm hiểu khách sạn", "thông tin khách sạn", "giới thiệu khách sạn", "về khách sạn", "khách sạn có gì", "tìm hiểu về rayal park hotel", "giới thiệu về khách sạn"
+- **Luồng trả lời:**
+  1. **Giới thiệu tổng quan:**
+     - "Rayal Park Hotel là khách sạn 5 sao được thành lập năm 2010, với hơn 14 năm kinh nghiệm phục vụ khách hàng. Chúng tôi tự hào là một trong những khách sạn hàng đầu tại Việt Nam với dịch vụ hoàn hảo, tiện nghi hiện đại và đội ngũ nhân viên chuyên nghiệp."
+  
+  2. **Đề xuất 4 chủ đề chính:**
+     ```
+     Bạn có thể tìm hiểu về:
+     
+     📜 Lịch Sử Hình Thành:
+     Hành trình phát triển từ năm 2010 đến nay, từ 20 phòng đến khách sạn 5 sao quốc tế.
+     
+     👤 Chủ Khách Sạn:
+     Thông tin về người sáng lập, thành tựu và triết lý kinh doanh.
+     
+     ✨ Tính Năng Mới:
+     6 tính năng công nghệ mới nhất để nâng cao trải nghiệm khách hàng.
+     
+     📍 Địa Điểm Gần:
+     Các điểm tham quan, nhà hàng, mua sắm xung quanh khách sạn.
+     
+     Bạn muốn tìm hiểu về chủ đề nào? Hoặc bạn có thể nhấn vào nút 'Khám Phá Ngay' trên trang chủ để xem đầy đủ thông tin.
+     ```
+  
+  3. **Nếu khách chọn một chủ đề cụ thể:**
+     - Chuyển sang kịch bản tương ứng (6.1, 6.2, 6.3, hoặc 6.4)
+     - Trả lời chi tiết về chủ đề đó
+  
+  4. **Gợi ý mở rộng:**
+     - "Bạn có muốn tìm hiểu thêm về chủ đề khác không?"
+     - "Bạn có thể đặt phòng ngay để trải nghiệm các dịch vụ của chúng tôi."
+
+- **Biến thể:**
+  - Khách hỏi chung chung → Đề xuất 4 chủ đề và để khách chọn
+  - Khách hỏi cụ thể một chủ đề → Trả lời chi tiết về chủ đề đó
+  - Khách muốn xem tất cả → Hướng dẫn vào phần "Khám Phá Ngay" trên trang chủ
+
+---
+
+## 7. Hướng dẫn triển khai các kịch bản mới
+
+### 7.1 API Endpoints cần sử dụng
+- `GET /api/nearby-places` - Lấy danh sách địa điểm gần khách sạn
+  - Response: Array of `NearbyPlace` objects với các field: `name`, `category`, `description`, `address`, `distance`, `walkingTime`, `drivingTime`, `phone`, `website`, `rating`, `image`, `isActive`
+  - Controller PHẢI filter `isActive: true` trước khi trả về cho AI
+
+### 7.2 Intent Parsing (Controller xử lý)
+- Parse các intent mới:
+  - `hotel_history` - Câu hỏi về lịch sử
+  - `hotel_owner` - Câu hỏi về chủ khách sạn
+  - `new_features` - Câu hỏi về tính năng mới
+  - `nearby_places` - Câu hỏi về địa điểm gần
+  - `explore_general` - Câu hỏi tổng hợp về khám phá
+
+### 7.3 Context Management
+- Controller lưu `exploreContext` vào session khi khách hỏi về các chủ đề này:
+  ```javascript
+  exploreContext: {
+    topic: 'history' | 'owner' | 'features' | 'nearby' | 'general',
+    nearbyPlaces: [], // Array of nearby places nếu đã gọi API
+    lastAskedFeature: 'chatbot' | 'booking' | 'calendar' | ... // Nếu khách hỏi về tính năng cụ thể
+  }
+  ```
+
+### 7.4 Prompt đề xuất cho AI (RAG)
+- "Nếu câu hỏi về lịch sử/chủ/tính năng/địa điểm/khám phá → tham chiếu section 6 trong `chatbot-scenarios.md`"
+- "Khi hỏi về địa điểm gần → sử dụng dữ liệu từ `exploreContext.nearbyPlaces` (đã được controller gọi API và lưu vào context)"
+- "Khi trả lời về tính năng mới → luôn nhắc khách có thể trải nghiệm ngay (ví dụ: chatbot đang dùng, đặt phòng ngay, xem trong 'Khám Phá Ngay')"
+- "Khi trả lời về lịch sử/chủ → luôn gợi ý khách xem thêm trong phần 'Khám Phá Ngay' để có thông tin đầy đủ hơn"
+
+### 7.5 Metadata gợi ý
+- Thêm tags: `scenario:hotel-info`, `scenario:explore`, `scenario:history`, `scenario:owner`, `scenario:features`, `scenario:nearby-places`
+
+### 7.6 Lưu ý quan trọng
+- **PHẢI cung cấp thông tin chi tiết** từ knowledge base, không chỉ hướng dẫn liên hệ hotline
+- **Nếu thiếu thông tin** (ví dụ: API nearby-places trả về rỗng) → Mới hướng dẫn liên hệ hotline
+- **Luôn gợi ý** khách xem phần "Khám Phá Ngay" trên trang chủ để có trải nghiệm tốt hơn
+- **Kết hợp thông tin** từ knowledge base với dữ liệu thực từ database (ví dụ: nearby places từ API)
+
+---
+
+6. **Theo dõi 4 KPI:** tỉ lệ giải đáp đủ thông tin, số lần chuyển người thật, % mã áp dụng thành công, CSAT sau chat.
+
+Tài liệu này bao phủ các hành vi chiếm ~85% câu hỏi phổ biến (đặt phòng, khuyến mãi, thanh toán, hủy đổi, dịch vụ phụ, thông tin khách sạn). Các tình huống đặc thù (sự kiện lớn, đoàn MICE) có thể bổ sung thêm sub-scenario khi phát sinh.
 

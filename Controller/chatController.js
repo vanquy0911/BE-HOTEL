@@ -2,6 +2,7 @@ import asyncHandler from "express-async-handler";
 import { ChatMessage, ChatSession } from "../Models/ChatModel.js";
 import Room from "../Models/RoomModel.js";
 import Booking from "../Models/BookingModel.js";
+import NearbyPlace from "../Models/NearbyPlaceModel.js";
 import crypto from "crypto";
 import dotenv from "dotenv";
 import { detectLanguage, getLanguage } from "../utils/languageDetector.js";
@@ -339,6 +340,132 @@ const parseDateFromText = (text) => {
   return null;
 };
 
+// Function để loại bỏ markdown links nhưng GIỮ LẠI link [text](explore)
+const removeMarkdownLinks = (text) => {
+  console.log('🚀 removeMarkdownLinks CALLED with text length:', text ? text.length : 0);
+  
+  if (!text) {
+    console.log('⚠️ removeMarkdownLinks - Empty text, returning as is');
+    return text;
+  }
+  
+  console.log('🔍 removeMarkdownLinks - Input text length:', text.length);
+  console.log('🔍 removeMarkdownLinks - Input text preview:', text.substring(0, 300));
+  
+  // ✅ QUAN TRỌNG: GIỮ LẠI link [text](explore) - đây là link để mở explore modal
+  // Tìm tất cả explore links trước
+  const exploreLinkPattern = /\[([^\]]+)\]\(explore\)/g;
+  const exploreLinks = [];
+  const textCopy = text;
+  
+  // Reset regex
+  exploreLinkPattern.lastIndex = 0;
+  let match;
+  while ((match = exploreLinkPattern.exec(textCopy)) !== null) {
+    exploreLinks.push(match[0]);
+    console.log(`✅ Found explore link:`, match[0]);
+  }
+  
+  console.log(`🔍 Found ${exploreLinks.length} explore links`);
+  
+  // Nếu không có explore links, chỉ xóa các markdown links khác và return
+  if (exploreLinks.length === 0) {
+    console.log('🔍 No explore links found, removing all markdown links');
+    let processedText = text;
+    processedText = processedText.replace(/\[([^\]]+)\]\([^\)]+\)/g, '$1');
+    processedText = processedText.replace(/\[roomDetailLink:[^\]]+\]/g, '');
+    processedText = processedText.replace(/\[bookingLink:[^\]]+\]/g, '');
+    processedText = processedText.replace(/\[paymentLink:[^\]]+\]/g, '');
+    return processedText;
+  }
+  
+  // ✅ Tạo placeholder với format đặc biệt để không bị regex match
+  const placeholders = exploreLinks.map((link, i) => {
+    // Dùng format đặc biệt với nhiều ký tự đặc biệt để không bị match bởi regex markdown
+    return `__EXPLORE_PLACEHOLDER_${i}_${Math.random().toString(36).substr(2, 9)}__`;
+  });
+  
+  // ✅ Thay thế explore links bằng placeholder (từ cuối lên để không ảnh hưởng index)
+  let processedText = text;
+  for (let i = exploreLinks.length - 1; i >= 0; i--) {
+    const beforeReplace = processedText;
+    processedText = processedText.replace(exploreLinks[i], placeholders[i]);
+    const afterReplace = processedText;
+    console.log(`🔍 Replaced explore link ${i}:`, {
+      found: beforeReplace.includes(exploreLinks[i]),
+      replaced: !afterReplace.includes(exploreLinks[i]),
+      hasPlaceholder: afterReplace.includes(placeholders[i]),
+      linkPreview: exploreLinks[i].substring(0, 50)
+    });
+  }
+  
+  // ✅ Kiểm tra placeholder có trong text không
+  const hasPlaceholders = placeholders.every(p => processedText.includes(p));
+  console.log('🔍 Has all placeholders after replace:', hasPlaceholders);
+  if (!hasPlaceholders) {
+    console.error('❌ ERROR: Placeholders not found after replace!');
+    // Fallback: return text gốc
+    return text;
+  }
+  
+  // ✅ Loại bỏ các markdown links khác (KHÔNG động vào placeholder)
+  // Pattern: [text](url) - chỉ match các link KHÔNG phải placeholder
+  const beforeRemoveLinks = processedText;
+  processedText = processedText.replace(/\[([^\]]+)\]\(([^\)]+)\)/g, (match, linkText, url) => {
+    // Nếu match là một phần của placeholder, giữ nguyên
+    // (Nhưng thực tế placeholder không có format markdown nên không bị match)
+    return linkText; // Xóa link, chỉ giữ text
+  });
+  
+  // Loại bỏ các format đặc biệt
+  processedText = processedText.replace(/\[roomDetailLink:[^\]]+\]/g, '');
+  processedText = processedText.replace(/\[bookingLink:[^\]]+\]/g, '');
+  processedText = processedText.replace(/\[paymentLink:[^\]]+\]/g, '');
+  
+  // ✅ Kiểm tra placeholder vẫn còn sau khi xóa links khác
+  const stillHasPlaceholders = placeholders.every(p => processedText.includes(p));
+  console.log('🔍 Still has all placeholders after removing other links:', stillHasPlaceholders);
+  if (!stillHasPlaceholders) {
+    console.error('❌ ERROR: Placeholders were removed!');
+    // Restore từ đầu
+    processedText = text;
+    for (let i = exploreLinks.length - 1; i >= 0; i--) {
+      processedText = processedText.replace(exploreLinks[i], placeholders[i]);
+    }
+    processedText = processedText.replace(/\[([^\]]+)\]\([^\)]+\)/g, '$1');
+    processedText = processedText.replace(/\[roomDetailLink:[^\]]+\]/g, '');
+    processedText = processedText.replace(/\[bookingLink:[^\]]+\]/g, '');
+    processedText = processedText.replace(/\[paymentLink:[^\]]+\]/g, '');
+  }
+  
+  // ✅ Khôi phục explore links từ placeholder
+  for (let i = 0; i < placeholders.length; i++) {
+    const beforeRestore = processedText.includes(placeholders[i]);
+    processedText = processedText.replace(placeholders[i], exploreLinks[i]);
+    const afterRestore = processedText.includes(exploreLinks[i]);
+    console.log(`🔍 Restored explore link ${i}:`, {
+      hadPlaceholder: beforeRestore,
+      hasLink: afterRestore,
+      linkPreview: exploreLinks[i].substring(0, 50)
+    });
+  }
+  
+  // ✅ Final check
+  const hasExploreLink = /\[([^\]]+)\]\(explore\)/.test(processedText);
+  console.log('🔍 removeMarkdownLinks - Output text preview:', processedText.substring(0, 300));
+  console.log('🔍 Final check - Has explore link:', hasExploreLink);
+  if (hasExploreLink) {
+    const matches = processedText.match(/\[([^\]]+)\]\(explore\)/g);
+    console.log('✅ Explore links in output:', matches);
+  } else {
+    console.error('❌ ERROR: Explore link was removed! Original had:', exploreLinks.length, 'links');
+    // Fallback: return text gốc nếu link bị mất
+    return text;
+  }
+  
+  return processedText;
+};
+
 // Function để parse yêu cầu tìm phòng từ câu hỏi
 const parseRoomSearchRequest = (userMessage) => {
   const lowerMessage = userMessage.toLowerCase();
@@ -552,6 +679,98 @@ const searchRooms = async (criteria) => {
     console.error("Error searching rooms:", error);
     return [];
   }
+};
+
+// Function để parse explore intent (lịch sử, chủ, tính năng, địa điểm) từ user message
+const parseExploreIntent = (userMessage) => {
+  const lowerMessage = userMessage.toLowerCase();
+  const intent = {
+    type: null, // 'history', 'owner', 'features', 'nearby', 'explore_general'
+    category: null, // Cho nearby: 'attraction', 'restaurant', 'shopping', etc.
+    specificFeature: null // Cho features: 'chatbot', 'booking', 'calendar', etc.
+  };
+
+  // Keywords cho lịch sử
+  const historyKeywords = [
+    'lịch sử', 'thành lập', 'có từ bao giờ', 'câu chuyện', 'hành trình phát triển',
+    'bao nhiêu năm', 'tiêu chuẩn 5 sao', 'giải thưởng', 'ra đời', 'khởi nghiệp',
+    'history', 'founded', 'established', 'story'
+  ];
+  
+  // Keywords cho chủ khách sạn
+  const ownerKeywords = [
+    'chủ khách sạn', 'chủ sở hữu', 'người sáng lập', 'giám đốc', 'chủ tịch',
+    'owner', 'founder', 'director', 'president', 'người điều hành'
+  ];
+  
+  // Keywords cho tính năng mới
+  const featuresKeywords = [
+    'tính năng mới', 'công nghệ mới', 'chatbot ai', 'đặt phòng online',
+    'quản lý booking', 'google calendar', 'thanh toán online', 'địa điểm gần',
+    'tiện ích mới', 'tính năng nổi bật', 'công nghệ khách sạn', 'dịch vụ mới',
+    '6 tính năng', 'tính năng công nghệ', 'công nghệ hiện đại', 'hiện đại nhất',
+    'tính năng công nghệ hiện đại', 'công nghệ hiện đại nhất', '6 tính năng công nghệ',
+    'new features', 'new technology', 'ai chatbot', 'online booking',
+    '6 features', 'technology features', 'modern technology', 'latest technology'
+  ];
+  
+  // Keywords cho địa điểm gần
+  const nearbyKeywords = [
+    'địa điểm gần', 'đi đâu gần', 'nhà hàng gần', 'điểm tham quan',
+    'mua sắm gần', 'quán ăn gần', 'đi chơi đâu', 'du lịch gần',
+    'địa điểm tham quan gần', 'ăn uống gần', 'shopping gần',
+    'bệnh viện gần', 'ngân hàng gần', 'nearby', 'restaurant near',
+    'attraction', 'shopping near'
+  ];
+  
+  // Keywords cho khám phá tổng hợp
+  const exploreKeywords = [
+    'khám phá', 'tìm hiểu khách sạn', 'thông tin khách sạn', 'giới thiệu khách sạn',
+    'về khách sạn', 'khách sạn có gì', 'explore', 'about hotel', 'hotel info'
+  ];
+
+  // Kiểm tra intent theo thứ tự ưu tiên
+  if (historyKeywords.some(keyword => lowerMessage.includes(keyword))) {
+    intent.type = 'history';
+  } else if (ownerKeywords.some(keyword => lowerMessage.includes(keyword))) {
+    intent.type = 'owner';
+  } else if (nearbyKeywords.some(keyword => lowerMessage.includes(keyword))) {
+    intent.type = 'nearby';
+    // Parse category nếu có
+    if (lowerMessage.includes('nhà hàng') || lowerMessage.includes('restaurant') || lowerMessage.includes('ăn')) {
+      intent.category = 'restaurant';
+    } else if (lowerMessage.includes('điểm tham quan') || lowerMessage.includes('attraction') || lowerMessage.includes('thăm quan')) {
+      intent.category = 'attraction';
+    } else if (lowerMessage.includes('mua sắm') || lowerMessage.includes('shopping') || lowerMessage.includes('cửa hàng')) {
+      intent.category = 'shopping';
+    } else if (lowerMessage.includes('bệnh viện') || lowerMessage.includes('hospital')) {
+      intent.category = 'hospital';
+    } else if (lowerMessage.includes('ngân hàng') || lowerMessage.includes('bank') || lowerMessage.includes('atm')) {
+      intent.category = lowerMessage.includes('atm') ? 'atm' : 'bank';
+    } else if (lowerMessage.includes('bưu điện') || lowerMessage.includes('post office')) {
+      intent.category = 'post_office';
+    }
+  } else if (featuresKeywords.some(keyword => lowerMessage.includes(keyword))) {
+    intent.type = 'features';
+    // Parse tính năng cụ thể nếu có
+    if (lowerMessage.includes('chatbot') || lowerMessage.includes('ai')) {
+      intent.specificFeature = 'chatbot';
+    } else if (lowerMessage.includes('đặt phòng') || lowerMessage.includes('booking')) {
+      intent.specificFeature = 'booking';
+    } else if (lowerMessage.includes('calendar') || lowerMessage.includes('lịch')) {
+      intent.specificFeature = 'calendar';
+    } else if (lowerMessage.includes('quản lý') || lowerMessage.includes('manage')) {
+      intent.specificFeature = 'manage';
+    } else if (lowerMessage.includes('thanh toán') || lowerMessage.includes('payment')) {
+      intent.specificFeature = 'payment';
+    } else if (lowerMessage.includes('địa điểm') || lowerMessage.includes('nearby')) {
+      intent.specificFeature = 'nearby';
+    }
+  } else if (exploreKeywords.some(keyword => lowerMessage.includes(keyword))) {
+    intent.type = 'explore_general';
+  }
+
+  return intent;
 };
 
 // Function để parse booking intent từ user message
@@ -1037,7 +1256,7 @@ const generateSelectedRoomPrompt = (selectedRoomInfo, bookingContext, language) 
 };
 
 // ✅ AI Response function với Gemini API, Room Search VÀ RAG
-const getAIResponse = async (userMessage, context = {}, conversationHistory = []) => {
+const getAIResponse = async (userMessage, context = {}, conversationHistory = [], exploreContext = {}, exploreIntent = {}) => {
   // ✅ KIỂM TRA NỘI DUNG NHẠY CẢM TRƯỚC KHI XỬ LÝ
   const sanitized = sanitizeInput(userMessage);
   
@@ -1268,6 +1487,170 @@ const getAIResponse = async (userMessage, context = {}, conversationHistory = []
         prompt += "=".repeat(50) + "\n\n";
         prompt += `${langNote}\n\n`;
         
+        // ✅ Thêm context về explore intent (lịch sử, chủ, tính năng, địa điểm)
+        if (exploreIntent.type) {
+          const exploreLabel = language === 'vi' ? 'CONTEXT: CÂU HỎI VỀ THÔNG TIN KHÁCH SẠN' : 'CONTEXT: HOTEL INFORMATION QUESTION';
+          let exploreContextText = '';
+          
+          if (exploreIntent.type === 'history') {
+            exploreContextText = language === 'vi'
+              ? `Khách hàng đang hỏi về lịch sử hình thành khách sạn.\n` +
+                `Tham khảo chatbot-scenarios.md section 6.1 để trả lời chi tiết về:\n` +
+                `- Năm 2010: Khởi Nghiệp (20 phòng)\n` +
+                `- Năm 2015: Mở Rộng (50 phòng, đạt 4 sao)\n` +
+                `- Năm 2020: Đạt Tiêu Chuẩn 5 Sao\n` +
+                `- Năm 2024: Hiện Tại & Tương Lai\n` +
+                `Luôn gợi ý khách click vào [Khám Phá Ngay](explore) trên trang chủ để có thông tin đầy đủ hơn.`
+              : `Customer is asking about hotel history.\n` +
+                `Refer to chatbot-scenarios.md section 6.1 for detailed response about:\n` +
+                `- 2010: Startup (20 rooms)\n` +
+                `- 2015: Expansion (50 rooms, 4-star)\n` +
+                `- 2020: Achieved 5-Star Standard\n` +
+                `- 2024: Present & Future\n` +
+                `Always suggest customer to click [Explore Now](explore) on homepage for more complete information.`;
+          } else if (exploreIntent.type === 'owner') {
+            exploreContextText = language === 'vi'
+              ? `Khách hàng đang hỏi về chủ khách sạn.\n` +
+                `Tham khảo chatbot-scenarios.md section 6.2 để trả lời về:\n` +
+                `- Chủ tịch & Nhà sáng lập: Nguyễn Văn A\n` +
+                `- 20+ năm kinh nghiệm trong ngành khách sạn\n` +
+                `- Thành tựu: Giải thưởng "Khách sạn tốt nhất năm 2023", Chứng nhận 5 sao, Top 10 khách sạn hàng đầu Việt Nam\n` +
+                `- Triết lý kinh doanh: "Khách hàng là trung tâm của mọi hoạt động"\n` +
+                `Luôn gợi ý khách click vào [Khám Phá Ngay](explore) trên trang chủ để có thông tin đầy đủ hơn.`
+              : `Customer is asking about hotel owner.\n` +
+                `Refer to chatbot-scenarios.md section 6.2 for response about:\n` +
+                `- President & Founder: Nguyễn Văn A\n` +
+                `- 20+ years experience in hospitality\n` +
+                `- Achievements: "Best Hotel 2023" award, 5-star certification, Top 10 hotels in Vietnam\n` +
+                `- Business philosophy: "Customer is the center of all activities"\n` +
+                `Always suggest customer to click [Explore Now](explore) on homepage for more complete information.`;
+          } else if (exploreIntent.type === 'features') {
+            exploreContextText = language === 'vi'
+              ? `⚠️⚠️⚠️ QUAN TRỌNG: Khách hàng đang hỏi về tính năng mới/công nghệ hiện đại của khách sạn.\n` +
+                `Bạn PHẢI trả lời ĐẦY ĐỦ về 6 tính năng công nghệ hiện đại nhất của Rayal Park Hotel:\n\n` +
+                `1. Chatbot AI Thông Minh:\n` +
+                `   - Trải nghiệm dịch vụ hỗ trợ 24/7 với chatbot AI thông minh\n` +
+                `   - Đặt phòng, tìm hiểu dịch vụ, hoặc nhận tư vấn ngay lập tức qua chat trực tuyến\n` +
+                `   - Hỗ trợ đa ngôn ngữ (Tiếng Việt & Tiếng Anh)\n` +
+                `   - Bạn đang sử dụng tính năng này ngay bây giờ! 😊\n\n` +
+                `2. Đặt Phòng Tức Thì:\n` +
+                `   - Đặt phòng ngay từ chat, không cần rời khỏi trang web\n` +
+                `   - Hệ thống tự động kiểm tra phòng trống và xác nhận đặt phòng trong vài giây\n` +
+                `   - Xác nhận tức thời, thanh toán linh hoạt\n\n` +
+                `3. Đồng Bộ Lịch Google:\n` +
+                `   - Tự động thêm lịch đặt phòng vào Google Calendar của bạn\n` +
+                `   - Nhận nhắc nhở và quản lý lịch trình một cách tiện lợi\n` +
+                `   - Tính năng này hoạt động tự động khi bạn đặt phòng thành công\n\n` +
+                `4. Quản Lý Booking Trực Tuyến:\n` +
+                `   - Xem, chỉnh sửa hoặc hủy đặt phòng của bạn mọi lúc, mọi nơi\n` +
+                `   - Tải hóa đơn, xem chi tiết và quản lý tất cả booking trong một nơi\n` +
+                `   - Chỉnh sửa dễ dàng, hủy phòng linh hoạt\n\n` +
+                `5. Thanh Toán Đa Phương Thức:\n` +
+                `   - Hỗ trợ nhiều phương thức thanh toán: thẻ tín dụng, chuyển khoản ngân hàng, hoặc thanh toán tại khách sạn\n` +
+                `   - An toàn và tiện lợi\n` +
+                `   - Bảo mật cao, thanh toán nhanh chóng\n\n` +
+                `6. Gợi Ý Địa Điểm Gần:\n` +
+                `   - Khám phá các địa điểm tham quan, nhà hàng, mua sắm gần khách sạn\n` +
+                `   - Tìm hiểu khoảng cách và thời gian di chuyển để lên kế hoạch hoàn hảo\n` +
+                `   - Thông tin chi tiết, bản đồ trực quan\n\n` +
+                `${exploreIntent.specificFeature ? `Khách hỏi cụ thể về: ${exploreIntent.specificFeature}. Hãy trả lời chi tiết về tính năng này.\n` : ''}` +
+                `Bạn PHẢI liệt kê đầy đủ 6 tính năng trên với mô tả chi tiết. KHÔNG được nói "không có thông tin". Luôn gợi ý khách xem phần 'Khám Phá Ngay' trên trang chủ để trải nghiệm các tính năng.`
+              : `⚠️⚠️⚠️ IMPORTANT: Customer is asking about new features/modern technology of the hotel.\n` +
+                `You MUST provide COMPLETE information about the 6 most modern technology features of Rayal Park Hotel:\n\n` +
+                `1. Smart AI Chatbot:\n` +
+                `   - Experience 24/7 support service with smart AI chatbot\n` +
+                `   - Book rooms, learn about services, or get instant advice via online chat\n` +
+                `   - Multilingual support (Vietnamese & English)\n` +
+                `   - You are using this feature right now! 😊\n\n` +
+                `2. Instant Booking:\n` +
+                `   - Book rooms directly from chat, no need to leave the website\n` +
+                `   - System automatically checks room availability and confirms booking in seconds\n` +
+                `   - Instant confirmation, flexible payment\n\n` +
+                `3. Google Calendar Sync:\n` +
+                `   - Automatically add booking to your Google Calendar\n` +
+                `   - Receive reminders and manage schedule conveniently\n` +
+                `   - This feature works automatically when you successfully book\n\n` +
+                `4. Online Booking Management:\n` +
+                `   - View, edit or cancel your bookings anytime, anywhere\n` +
+                `   - Download invoices, view details and manage all bookings in one place\n` +
+                `   - Easy editing, flexible cancellation\n\n` +
+                `5. Multi-Payment Methods:\n` +
+                `   - Support multiple payment methods: credit card, bank transfer, or payment at hotel\n` +
+                `   - Safe and convenient\n` +
+                `   - High security, fast payment\n\n` +
+                `6. Nearby Places Suggestions:\n` +
+                `   - Explore attractions, restaurants, shopping near the hotel\n` +
+                `   - Learn about distance and travel time to plan perfectly\n` +
+                `   - Detailed information, visual maps\n\n` +
+                `${exploreIntent.specificFeature ? `Customer specifically asked about: ${exploreIntent.specificFeature}. Please provide detailed information about this feature.\n` : ''}` +
+                `You MUST list all 6 features above with detailed descriptions. MUST NOT say "no information available". Always suggest customer to check 'Explore Now' section on homepage to experience the features.`;
+          } else if (exploreIntent.type === 'nearby') {
+            const nearbyPlacesData = exploreContext.nearbyPlaces || [];
+            const categoryLabel = exploreIntent.category 
+              ? (language === 'vi' ? `Danh mục: ${exploreIntent.category}` : `Category: ${exploreIntent.category}`)
+              : (language === 'vi' ? 'Tất cả danh mục' : 'All categories');
+            
+            exploreContextText = language === 'vi'
+              ? `Khách hàng đang hỏi về địa điểm gần khách sạn.\n` +
+                `Tham khảo chatbot-scenarios.md section 6.4 để trả lời.\n` +
+                `${categoryLabel}\n` +
+                `Đã tải ${nearbyPlacesData.length} địa điểm từ database.\n` +
+                `${nearbyPlacesData.length > 0 
+                  ? `PHẢI hiển thị danh sách địa điểm với thông tin: tên, khoảng cách, thời gian di chuyển, địa chỉ, rating (nếu có).\n` +
+                    `Phân loại theo category: Điểm Tham Quan, Nhà Hàng, Mua Sắm, Bệnh Viện, Ngân Hàng/ATM, Bưu Điện.\n` +
+                    `Sử dụng icon phù hợp cho từng category (🏛️, 🍽️, 🛍️, 🏥, 🏦, 📮).`
+                  : `Không có địa điểm nào trong database. Hướng dẫn khách liên hệ hotline 0901 234 567 để được tư vấn cụ thể.`}\n` +
+                `Luôn gợi ý khách click vào [Khám Phá Ngay](explore) trên trang chủ để xem đầy đủ danh sách.`
+              : `Customer is asking about nearby places.\n` +
+                `Refer to chatbot-scenarios.md section 6.4 for response.\n` +
+                `${categoryLabel}\n` +
+                `Loaded ${nearbyPlacesData.length} places from database.\n` +
+                `${nearbyPlacesData.length > 0 
+                  ? `MUST display list of places with information: name, distance, travel time, address, rating (if available).\n` +
+                    `Categorize by: Attractions, Restaurants, Shopping, Hospitals, Banks/ATM, Post Office.\n` +
+                    `Use appropriate icons for each category (🏛️, 🍽️, 🛍️, 🏥, 🏦, 📮).`
+                  : `No places in database. Guide customer to contact hotline 0901 234 567 for specific advice.`}\n` +
+                `Always suggest customer to click [Explore Now](explore) on homepage for full list.`;
+            
+            // Thêm dữ liệu địa điểm vào prompt nếu có
+            if (nearbyPlacesData.length > 0) {
+              exploreContextText += `\n\nDỮ LIỆU ĐỊA ĐIỂM:\n`;
+              nearbyPlacesData.forEach((place, idx) => {
+                exploreContextText += `${idx + 1}. ${place.name} (${place.category})\n`;
+                exploreContextText += `   Khoảng cách: ${place.distance}\n`;
+                if (place.walkingTime) exploreContextText += `   Thời gian đi bộ: ${place.walkingTime}\n`;
+                if (place.drivingTime) exploreContextText += `   Thời gian xe: ${place.drivingTime}\n`;
+                if (place.address) exploreContextText += `   Địa chỉ: ${place.address}\n`;
+                if (place.rating) exploreContextText += `   Rating: ${place.rating}/5\n`;
+                if (place.description) exploreContextText += `   Mô tả: ${place.description}\n`;
+                exploreContextText += `\n`;
+              });
+            }
+          } else if (exploreIntent.type === 'explore_general') {
+            exploreContextText = language === 'vi'
+              ? `Khách hàng đang hỏi tổng hợp về khách sạn (khám phá).\n` +
+                `Tham khảo chatbot-scenarios.md section 6.5 để trả lời.\n` +
+                `Giới thiệu tổng quan và đề xuất 4 chủ đề:\n` +
+                `- 📜 Lịch Sử Hình Thành\n` +
+                `- 👤 Chủ Khách Sạn\n` +
+                `- ✨ Tính Năng Mới\n` +
+                `- 📍 Địa Điểm Gần\n` +
+                `Hướng dẫn khách nhấn vào nút 'Khám Phá Ngay' trên trang chủ để xem đầy đủ thông tin.`
+              : `Customer is asking general questions about the hotel (explore).\n` +
+                `Refer to chatbot-scenarios.md section 6.5 for response.\n` +
+                `Provide overview and suggest 4 topics:\n` +
+                `- 📜 Hotel History\n` +
+                `- 👤 Hotel Owner\n` +
+                `- ✨ New Features\n` +
+                `- 📍 Nearby Places\n` +
+                `Guide customer to click 'Explore Now' button on homepage for full information.`;
+          }
+          
+          if (exploreContextText) {
+            prompt += `\n\n${exploreLabel}:\n${exploreContextText}\n\n`;
+          }
+        }
+        
         // ✅ Thêm thông tin phòng đã chọn nếu có (QUAN TRỌNG - phải đúng thông tin)
         if (context.selectedRoom) {
           const selectedRoomInfo = context.selectedRoom;
@@ -1480,6 +1863,190 @@ const getAIResponse = async (userMessage, context = {}, conversationHistory = []
       } else {
         // Fallback: dùng logic cũ nếu không có RAG
         prompt = languageHeader + SYSTEM_PROMPT + "\n\n";
+        
+        // ✅ THÊM: Explore context vào fallback prompt (QUAN TRỌNG - khi RAG không có data)
+        if (exploreIntent.type) {
+          const exploreLabel = language === 'vi' ? 'CONTEXT: CÂU HỎI VỀ THÔNG TIN KHÁCH SẠN' : 'CONTEXT: HOTEL INFORMATION QUESTION';
+          let exploreContextText = '';
+          
+          if (exploreIntent.type === 'history') {
+            exploreContextText = language === 'vi'
+              ? `Khách hàng đang hỏi về lịch sử hình thành khách sạn.\n` +
+                `Rayal Park Hotel được thành lập vào năm 2010 với tầm nhìn trở thành điểm đến nghỉ dưỡng hàng đầu tại Việt Nam.\n\n` +
+                `Timeline chi tiết:\n` +
+                `- Năm 2010: Khởi Nghiệp - Từ một dự án nhỏ với 20 phòng đầu tiên\n` +
+                `- Năm 2015: Mở Rộng Quy Mô - Lên 50 phòng cao cấp, đạt tiêu chuẩn 4 sao và nhận được nhiều giải thưởng về chất lượng dịch vụ\n` +
+                `- Năm 2020: Đạt Tiêu Chuẩn 5 Sao - Sau 10 năm phát triển, chính thức đạt tiêu chuẩn 5 sao quốc tế\n` +
+                `- Năm 2024: Hiện Tại & Tương Lai - Tiếp tục đổi mới, hướng tới mục tiêu trở thành khách sạn hàng đầu khu vực Đông Nam Á\n\n` +
+                `Thành tựu nổi bật:\n` +
+                `- Giải thưởng "Khách sạn tốt nhất năm 2023"\n` +
+                `- Chứng nhận 5 sao quốc tế\n` +
+                `- Top 10 khách sạn hàng đầu Việt Nam\n\n` +
+                `Bạn PHẢI trả lời chi tiết về lịch sử hình thành. Luôn gợi ý khách xem phần 'Khám Phá Ngay' trên trang chủ để có thông tin đầy đủ hơn.`
+              : `Customer is asking about hotel history.\n` +
+                `Rayal Park Hotel was founded in 2010 with the vision of becoming a leading resort destination in Vietnam.\n\n` +
+                `Detailed timeline:\n` +
+                `- 2010: Startup - Started as a small project with 20 rooms\n` +
+                `- 2015: Expansion - Expanded to 50 premium rooms, achieved 4-star standard and received many awards for service quality\n` +
+                `- 2020: Achieved 5-Star Standard - After 10 years of development, officially achieved international 5-star standard\n` +
+                `- 2024: Present & Future - Continue to innovate, aiming to become a leading hotel in Southeast Asia\n\n` +
+                `Outstanding achievements:\n` +
+                `- "Best Hotel 2023" award\n` +
+                `- International 5-star certification\n` +
+                `- Top 10 hotels in Vietnam\n\n` +
+                `You MUST provide detailed information about the hotel's history. Always suggest customer to check 'Explore Now' section on homepage for more complete information.`;
+          } else if (exploreIntent.type === 'owner') {
+            exploreContextText = language === 'vi'
+              ? `Khách hàng đang hỏi về chủ khách sạn.\n` +
+                `Chủ tịch & Nhà sáng lập Rayal Park Hotel là Nguyễn Văn A, một doanh nhân thành đạt với hơn 20 năm kinh nghiệm trong ngành khách sạn và du lịch.\n\n` +
+                `Tiểu sử:\n` +
+                `- Với tầm nhìn xa và đam mê mang đến trải nghiệm nghỉ dưỡng đẳng cấp, ông đã sáng lập Rayal Park Hotel vào năm 2010\n` +
+                `- Dưới sự lãnh đạo của ông, khách sạn đã phát triển từ một dự án nhỏ trở thành một trong những khách sạn 5 sao hàng đầu tại Việt Nam\n` +
+                `- Ông luôn đặt khách hàng làm trung tâm và cam kết mang đến dịch vụ hoàn hảo nhất cho mọi du khách\n\n` +
+                `Thành tựu nổi bật:\n` +
+                `- Giải thưởng "Khách sạn tốt nhất năm 2023"\n` +
+                `- Chứng nhận 5 sao quốc tế\n` +
+                `- Top 10 khách sạn hàng đầu Việt Nam\n\n` +
+                `Triết lý kinh doanh:\n` +
+                `"Khách hàng là trung tâm của mọi hoạt động. Chúng tôi không chỉ cung cấp dịch vụ lưu trú, mà còn tạo ra những kỷ niệm đáng nhớ cho mỗi du khách."\n\n` +
+                `Bạn PHẢI trả lời chi tiết về chủ khách sạn. Luôn gợi ý khách xem phần 'Khám Phá Ngay' trên trang chủ để có thông tin đầy đủ hơn.`
+              : `Customer is asking about hotel owner.\n` +
+                `President & Founder of Rayal Park Hotel is Nguyễn Văn A, a successful entrepreneur with over 20 years of experience in hospitality and tourism.\n\n` +
+                `Biography:\n` +
+                `- With vision and passion for delivering premium resort experiences, he founded Rayal Park Hotel in 2010\n` +
+                `- Under his leadership, the hotel has grown from a small project to one of the leading 5-star hotels in Vietnam\n` +
+                `- He always puts customers at the center and commits to providing the best service for every guest\n\n` +
+                `Outstanding achievements:\n` +
+                `- "Best Hotel 2023" award\n` +
+                `- International 5-star certification\n` +
+                `- Top 10 hotels in Vietnam\n\n` +
+                `Business philosophy:\n` +
+                `"Customer is the center of all activities. We don't just provide accommodation services, but also create memorable experiences for every guest."\n\n` +
+                `You MUST provide detailed information about the hotel owner. Always suggest customer to check 'Explore Now' section on homepage for more complete information.`;
+          } else if (exploreIntent.type === 'features') {
+            exploreContextText = language === 'vi'
+              ? `⚠️⚠️⚠️ QUAN TRỌNG: Khách hàng đang hỏi về tính năng mới/công nghệ hiện đại của khách sạn.\n` +
+                `Bạn PHẢI trả lời ĐẦY ĐỦ về 6 tính năng công nghệ hiện đại nhất của Rayal Park Hotel:\n\n` +
+                `1. Chatbot AI Thông Minh:\n` +
+                `   - Trải nghiệm dịch vụ hỗ trợ 24/7 với chatbot AI thông minh\n` +
+                `   - Đặt phòng, tìm hiểu dịch vụ, hoặc nhận tư vấn ngay lập tức qua chat trực tuyến\n` +
+                `   - Hỗ trợ đa ngôn ngữ (Tiếng Việt & Tiếng Anh)\n` +
+                `   - Bạn đang sử dụng tính năng này ngay bây giờ! 😊\n\n` +
+                `2. Đặt Phòng Tức Thì:\n` +
+                `   - Đặt phòng ngay từ chat, không cần rời khỏi trang web\n` +
+                `   - Hệ thống tự động kiểm tra phòng trống và xác nhận đặt phòng trong vài giây\n` +
+                `   - Xác nhận tức thời, thanh toán linh hoạt\n\n` +
+                `3. Đồng Bộ Lịch Google:\n` +
+                `   - Tự động thêm lịch đặt phòng vào Google Calendar của bạn\n` +
+                `   - Nhận nhắc nhở và quản lý lịch trình một cách tiện lợi\n` +
+                `   - Tính năng này hoạt động tự động khi bạn đặt phòng thành công\n\n` +
+                `4. Quản Lý Booking Trực Tuyến:\n` +
+                `   - Xem, chỉnh sửa hoặc hủy đặt phòng của bạn mọi lúc, mọi nơi\n` +
+                `   - Tải hóa đơn, xem chi tiết và quản lý tất cả booking trong một nơi\n` +
+                `   - Chỉnh sửa dễ dàng, hủy phòng linh hoạt\n\n` +
+                `5. Thanh Toán Đa Phương Thức:\n` +
+                `   - Hỗ trợ nhiều phương thức thanh toán: thẻ tín dụng, chuyển khoản ngân hàng, hoặc thanh toán tại khách sạn\n` +
+                `   - An toàn và tiện lợi\n` +
+                `   - Bảo mật cao, thanh toán nhanh chóng\n\n` +
+                `6. Gợi Ý Địa Điểm Gần:\n` +
+                `   - Khám phá các địa điểm tham quan, nhà hàng, mua sắm gần khách sạn\n` +
+                `   - Tìm hiểu khoảng cách và thời gian di chuyển để lên kế hoạch hoàn hảo\n` +
+                `   - Thông tin chi tiết, bản đồ trực quan\n\n` +
+                `${exploreIntent.specificFeature ? `Khách hỏi cụ thể về: ${exploreIntent.specificFeature}. Hãy trả lời chi tiết về tính năng này.\n` : ''}` +
+                `Bạn PHẢI liệt kê đầy đủ 6 tính năng trên với mô tả chi tiết. KHÔNG được nói "không có thông tin" hoặc "không có thông tin chi tiết". Luôn gợi ý khách xem phần 'Khám Phá Ngay' trên trang chủ để trải nghiệm các tính năng.`
+              : `⚠️⚠️⚠️ IMPORTANT: Customer is asking about new features/modern technology of the hotel.\n` +
+                `You MUST provide COMPLETE information about the 6 most modern technology features of Rayal Park Hotel:\n\n` +
+                `1. Smart AI Chatbot:\n` +
+                `   - Experience 24/7 support service with smart AI chatbot\n` +
+                `   - Book rooms, learn about services, or get instant advice via online chat\n` +
+                `   - Multilingual support (Vietnamese & English)\n` +
+                `   - You are using this feature right now! 😊\n\n` +
+                `2. Instant Booking:\n` +
+                `   - Book rooms directly from chat, no need to leave the website\n` +
+                `   - System automatically checks room availability and confirms booking in seconds\n` +
+                `   - Instant confirmation, flexible payment\n\n` +
+                `3. Google Calendar Sync:\n` +
+                `   - Automatically add booking to your Google Calendar\n` +
+                `   - Receive reminders and manage schedule conveniently\n` +
+                `   - This feature works automatically when you successfully book\n\n` +
+                `4. Online Booking Management:\n` +
+                `   - View, edit or cancel your bookings anytime, anywhere\n` +
+                `   - Download invoices, view details and manage all bookings in one place\n` +
+                `   - Easy editing, flexible cancellation\n\n` +
+                `5. Multi-Payment Methods:\n` +
+                `   - Support multiple payment methods: credit card, bank transfer, or payment at hotel\n` +
+                `   - Safe and convenient\n` +
+                `   - High security, fast payment\n\n` +
+                `6. Nearby Places Suggestions:\n` +
+                `   - Explore attractions, restaurants, shopping near the hotel\n` +
+                `   - Learn about distance and travel time to plan perfectly\n` +
+                `   - Detailed information, visual maps\n\n` +
+                `${exploreIntent.specificFeature ? `Customer specifically asked about: ${exploreIntent.specificFeature}. Please provide detailed information about this feature.\n` : ''}` +
+                `You MUST list all 6 features above with detailed descriptions. MUST NOT say "no information available" or "no detailed information". Always suggest customer to check 'Explore Now' section on homepage to experience the features.`;
+          } else if (exploreIntent.type === 'nearby') {
+            const nearbyPlacesData = exploreContext.nearbyPlaces || [];
+            const categoryLabel = exploreIntent.category 
+              ? (language === 'vi' ? `Danh mục: ${exploreIntent.category}` : `Category: ${exploreIntent.category}`)
+              : (language === 'vi' ? 'Tất cả danh mục' : 'All categories');
+            
+            exploreContextText = language === 'vi'
+              ? `Khách hàng đang hỏi về địa điểm gần khách sạn.\n` +
+                `${categoryLabel}\n` +
+                `Đã tải ${nearbyPlacesData.length} địa điểm từ database.\n` +
+                `${nearbyPlacesData.length > 0 
+                  ? `PHẢI hiển thị danh sách địa điểm với thông tin: tên, khoảng cách, thời gian di chuyển, địa chỉ, rating (nếu có).\n` +
+                    `Phân loại theo category: Điểm Tham Quan, Nhà Hàng, Mua Sắm, Bệnh Viện, Ngân Hàng/ATM, Bưu Điện.\n` +
+                    `Sử dụng icon phù hợp cho từng category (🏛️, 🍽️, 🛍️, 🏥, 🏦, 📮).`
+                  : `Không có địa điểm nào trong database. Hướng dẫn khách liên hệ hotline 0901 234 567 để được tư vấn cụ thể.`}\n` +
+                `Luôn gợi ý khách click vào [Khám Phá Ngay](explore) trên trang chủ để xem đầy đủ danh sách.`
+              : `Customer is asking about nearby places.\n` +
+                `${categoryLabel}\n` +
+                `Loaded ${nearbyPlacesData.length} places from database.\n` +
+                `${nearbyPlacesData.length > 0 
+                  ? `MUST display list of places with information: name, distance, travel time, address, rating (if available).\n` +
+                    `Categorize by: Attractions, Restaurants, Shopping, Hospitals, Banks/ATM, Post Office.\n` +
+                    `Use appropriate icons for each category (🏛️, 🍽️, 🛍️, 🏥, 🏦, 📮).`
+                  : `No places in database. Guide customer to contact hotline 0901 234 567 for specific advice.`}\n` +
+                `Always suggest customer to click [Explore Now](explore) on homepage for full list.`;
+            
+            // Thêm dữ liệu địa điểm vào prompt nếu có
+            if (nearbyPlacesData.length > 0) {
+              exploreContextText += `\n\nDỮ LIỆU ĐỊA ĐIỂM:\n`;
+              nearbyPlacesData.forEach((place, idx) => {
+                exploreContextText += `${idx + 1}. ${place.name} (${place.category})\n`;
+                exploreContextText += `   Khoảng cách: ${place.distance}\n`;
+                if (place.walkingTime) exploreContextText += `   Thời gian đi bộ: ${place.walkingTime}\n`;
+                if (place.drivingTime) exploreContextText += `   Thời gian xe: ${place.drivingTime}\n`;
+                if (place.address) exploreContextText += `   Địa chỉ: ${place.address}\n`;
+                if (place.rating) exploreContextText += `   Rating: ${place.rating}/5\n`;
+                if (place.description) exploreContextText += `   Mô tả: ${place.description}\n`;
+                exploreContextText += `\n`;
+              });
+            }
+          } else if (exploreIntent.type === 'explore_general') {
+            exploreContextText = language === 'vi'
+              ? `Khách hàng đang hỏi tổng hợp về khách sạn (khám phá).\n` +
+                `Rayal Park Hotel là khách sạn 5 sao được thành lập năm 2010, với hơn 14 năm kinh nghiệm phục vụ khách hàng.\n\n` +
+                `Bạn có thể tìm hiểu về:\n` +
+                `- 📜 Lịch Sử Hình Thành: Hành trình phát triển từ 2010 đến nay\n` +
+                `- 👤 Chủ Khách Sạn: Thông tin về người sáng lập và triết lý kinh doanh\n` +
+                `- ✨ Tính Năng Mới: 6 tính năng công nghệ mới nhất\n` +
+                `- 📍 Địa Điểm Gần: Các điểm tham quan, nhà hàng, mua sắm xung quanh\n\n` +
+                `Bạn PHẢI giới thiệu tổng quan và đề xuất 4 chủ đề trên. Hướng dẫn khách click vào [Khám Phá Ngay](explore) trên trang chủ để xem đầy đủ thông tin.`
+              : `Customer is asking general questions about the hotel (explore).\n` +
+                `Rayal Park Hotel is a 5-star hotel founded in 2010, with over 14 years of experience serving customers.\n\n` +
+                `You can learn about:\n` +
+                `- 📜 Hotel History: Development journey from 2010 to present\n` +
+                `- 👤 Hotel Owner: Information about the founder and business philosophy\n` +
+                `- ✨ New Features: 6 latest technology features\n` +
+                `- 📍 Nearby Places: Attractions, restaurants, shopping around\n\n` +
+                `You MUST provide overview and suggest the 4 topics above. Guide customer to click [Explore Now](explore) on homepage for full information.`;
+          }
+          
+          if (exploreContextText) {
+            prompt += `\n\n${exploreLabel}:\n${exploreContextText}\n\n`;
+          }
+        }
         
         // ✅ Thêm thông tin phòng đã chọn nếu có (QUAN TRỌNG - phải đúng thông tin)
         if (context.selectedRoom) {
@@ -1825,6 +2392,12 @@ const getAIResponse = async (userMessage, context = {}, conversationHistory = []
         : "\n\n⚠️⚠️⚠️ IMPORTANT: You MUST respond in ENGLISH. DO NOT respond in Vietnamese. ⚠️⚠️⚠️";
       prompt += langInstruction;
       
+      // ✅ THÊM: Instruction về format link cho "Khám Phá Ngay"
+      const linkInstruction = language === 'vi'
+        ? "\n\n🔗 FORMAT LINK QUAN TRỌNG: Khi đề cập đến 'Khám Phá Ngay', bạn PHẢI dùng format markdown link: [Khám Phá Ngay](explore). KHÔNG dùng text thường như 'phần Khám Phá Ngay' hoặc 'trang chủ website'. PHẢI dùng [Khám Phá Ngay](explore) để khách có thể click."
+        : "\n\n🔗 IMPORTANT LINK FORMAT: When mentioning 'Explore Now', you MUST use markdown link format: [Explore Now](explore). DO NOT use plain text like 'Explore Now section' or 'homepage'. MUST use [Explore Now](explore) so customers can click.";
+      prompt += linkInstruction;
+      
       // ✅ THÊM: Log prompt để debug (chỉ log 500 ký tự đầu)
       console.log(`📋 Prompt preview (first 500 chars): ${prompt.substring(0, 500)}...`);
       
@@ -2036,7 +2609,7 @@ const getAIResponse = async (userMessage, context = {}, conversationHistory = []
               });
             }
             
-            return {
+      return {
               ...room.toObject ? room.toObject() : room,
               priceDetails: {
                 basePricePerNight: room.pricePerNight,
@@ -2063,9 +2636,103 @@ const getAIResponse = async (userMessage, context = {}, conversationHistory = []
         }
       }
       
+      // ✅ Post-process: Convert "Khám Phá Ngay" thành markdown link nếu chưa có
+      let processedText = text.trim();
+      
+      console.log('🔍 Post-processing - Original text:', processedText.substring(0, 300));
+      
+      // Kiểm tra xem đã có link format chưa
+      const hasExploreLink = /\[([^\]]*Khám Phá Ngay[^\]]*)\]\(explore\)|\[([^\]]*Explore Now[^\]]*)\]\(explore\)/i.test(processedText);
+      console.log('🔍 Post-processing - Has explore link already:', hasExploreLink);
+      
+      if (!hasExploreLink) {
+        console.log('🔍 Post-processing - Converting text to explore links...');
+        
+        // Convert "Khám Phá Ngay" thành [Khám Phá Ngay](explore)
+        // Pattern: bắt nhiều biến thể như "phần Khám Phá Ngay", "'Khám Phá Ngay'", "Khám Phá Ngay trên trang chủ"
+        processedText = processedText.replace(
+          /(?:phần\s+|xem\s+)?['"]?(Khám Phá Ngay)['"]?(?:\s+trên\s+trang\s+chủ)?/gi,
+          (match, text) => {
+            // Kiểm tra xem có phải đã là link format không (check trong toàn bộ text)
+            if (processedText.includes(`[${text}](explore)`)) {
+              return match;
+            }
+            console.log(`🔗 Converting "${match}" to [${text}](explore)`);
+            return `[${text}](explore)`;
+          }
+        );
+        
+        // Convert "Explore Now" thành [Explore Now](explore)
+        processedText = processedText.replace(
+          /(?:section\s+|check\s+)?['"]?(Explore Now)['"]?(?:\s+on\s+homepage)?/gi,
+          (match, text) => {
+            // Kiểm tra xem có phải đã là link format không
+            if (processedText.includes(`[${text}](explore)`)) {
+              return match;
+            }
+            console.log(`🔗 Converting "${match}" to [${text}](explore)`);
+            return `[${text}](explore)`;
+          }
+        );
+        
+        // ✅ THÊM: Convert các biến thể khác như "trang chủ website" hoặc "homepage" khi context liên quan đến explore
+        // Chỉ convert nếu có từ khóa liên quan đến explore trong câu
+        if (processedText.includes('trang chủ') || processedText.includes('homepage')) {
+          // Kiểm tra xem có context về explore không
+          const exploreKeywords = ['lịch sử', 'chủ khách sạn', 'tính năng', 'địa điểm', 'khám phá', 'history', 'owner', 'features', 'nearby', 'explore'];
+          const hasExploreContext = exploreKeywords.some(keyword => processedText.toLowerCase().includes(keyword));
+          
+          if (hasExploreContext && !hasExploreLink) {
+            // Thay "trang chủ website" hoặc "homepage" bằng link nếu chưa có
+            processedText = processedText.replace(
+              /(?:xem\s+)?(?:trên\s+)?(?:trang\s+chủ\s+website|homepage)(?:\s+của\s+chúng\s+tôi)?/gi,
+              (match) => {
+                const linkText = language === 'vi' ? 'Khám Phá Ngay' : 'Explore Now';
+                if (!processedText.includes(`[${linkText}](explore)`)) {
+                  console.log(`🔗 Converting "${match}" to [${linkText}](explore)`);
+                  return `[${linkText}](explore)`;
+                }
+                return match;
+              }
+            );
+          }
+        }
+        
+        // ✅ KIỂM TRA LẠI: Nếu vẫn chưa có link, force convert bất kỳ mention nào của "Khám Phá Ngay" hoặc "Explore Now"
+        const finalCheck = /\[([^\]]*Khám Phá Ngay[^\]]*)\]\(explore\)|\[([^\]]*Explore Now[^\]]*)\]\(explore\)/i.test(processedText);
+        if (!finalCheck) {
+          // Force convert bất kỳ mention nào
+          if (processedText.includes('Khám Phá Ngay') && !processedText.includes('[Khám Phá Ngay](explore)')) {
+            processedText = processedText.replace(/(Khám Phá Ngay)/g, (match) => {
+              if (!processedText.includes(`[${match}](explore)`)) {
+                console.log(`🔗 Force converting "${match}" to [${match}](explore)`);
+                return `[${match}](explore)`;
+              }
+              return match;
+            });
+          }
+          if (processedText.includes('Explore Now') && !processedText.includes('[Explore Now](explore)')) {
+            processedText = processedText.replace(/(Explore Now)/g, (match) => {
+              if (!processedText.includes(`[${match}](explore)`)) {
+                console.log(`🔗 Force converting "${match}" to [${match}](explore)`);
+                return `[${match}](explore)`;
+              }
+              return match;
+            });
+          }
+        }
+      }
+      
+      // Log để debug
+      console.log('🔍 Post-processing - Final text:', processedText.substring(0, 300));
+      console.log('🔍 Post-processing - Has explore link in final:', /\[([^\]]+)\]\(explore\)/.test(processedText));
+      if (processedText !== text.trim()) {
+        console.log('✅ Post-processed text changed');
+      }
+      
       // Trả về response kèm dữ liệu phòng nếu có (với giá chi tiết)
       return {
-        text: text.trim(),
+        text: processedText,
         rooms: enrichedRooms || roomSearchResults || null,
         hasRooms: (enrichedRooms || roomSearchResults) && (enrichedRooms || roomSearchResults).length > 0
       };
@@ -2353,6 +3020,9 @@ export const chatWithAI = asyncHandler(async (req, res) => {
     // ✅ Parse booking intent từ user message
     const bookingIntent = parseBookingIntent(message.trim(), context);
     
+    // ✅ Parse explore intent (lịch sử, chủ, tính năng, địa điểm)
+    const exploreIntent = parseExploreIntent(message.trim());
+    
     // ✅ Log để debug
     console.log(`🔍 Parsed booking intent:`, {
       action: bookingIntent.action,
@@ -2360,6 +3030,50 @@ export const chatWithAI = asyncHandler(async (req, res) => {
       hasLastRoomSearchResults: !!context.lastRoomSearchResults,
       lastRoomSearchResultsCount: context.lastRoomSearchResults?.length || 0
     });
+    
+    console.log(`🔍 Parsed explore intent:`, {
+      type: exploreIntent.type,
+      category: exploreIntent.category,
+      specificFeature: exploreIntent.specificFeature
+    });
+    
+    // ✅ Khởi tạo exploreContext nếu chưa có
+    let exploreContext = {};
+    if (session?.context?.exploreContext) {
+      exploreContext = { ...session.context.exploreContext };
+    } else if (context.exploreContext) {
+      exploreContext = { ...context.exploreContext };
+    }
+    
+    // ✅ Xử lý explore intent: Gọi API nearby-places nếu cần
+    if (exploreIntent.type === 'nearby') {
+      try {
+        const filter = { isActive: true };
+        if (exploreIntent.category) {
+          filter.category = exploreIntent.category;
+        }
+        
+        const nearbyPlaces = await NearbyPlace.find(filter).sort({ distance: 1 }).lean();
+        exploreContext.nearbyPlaces = nearbyPlaces;
+        exploreContext.topic = 'nearby';
+        exploreContext.lastCategory = exploreIntent.category || null;
+        
+        console.log(`✅ Loaded ${nearbyPlaces.length} nearby places`, {
+          category: exploreIntent.category || 'all',
+          places: nearbyPlaces.map(p => ({ name: p.name, category: p.category }))
+        });
+      } catch (error) {
+        console.error('❌ Error loading nearby places:', error);
+        exploreContext.nearbyPlaces = [];
+        exploreContext.error = 'Không thể tải danh sách địa điểm. Vui lòng thử lại sau.';
+      }
+    } else if (exploreIntent.type) {
+      // Lưu topic cho các intent khác (history, owner, features, explore_general)
+      exploreContext.topic = exploreIntent.type;
+      if (exploreIntent.specificFeature) {
+        exploreContext.lastAskedFeature = exploreIntent.specificFeature;
+      }
+    }
     
     let bookingLink = null; // Link đến form đặt phòng với dữ liệu đã được điền sẵn
     let paymentLink = null; // Link thanh toán dựa trên booking đã tạo
@@ -3227,8 +3941,8 @@ export const chatWithAI = asyncHandler(async (req, res) => {
     }
     
     // Nếu là bot mode, tiếp tục xử lý với AI
-    // Lấy phản hồi từ AI (với conversation history)
-    const aiResponse = await getAIResponse(message.trim(), context, conversationHistory);
+    // Lấy phản hồi từ AI (với conversation history, exploreContext, và exploreIntent)
+    const aiResponse = await getAIResponse(message.trim(), context, conversationHistory, exploreContext, exploreIntent);
     
     // Extract text và rooms từ response
     const responseText = typeof aiResponse === 'string' ? aiResponse : aiResponse.text;
@@ -3519,6 +4233,18 @@ export const chatWithAI = asyncHandler(async (req, res) => {
         session.context.lastRoomSearchResults = context.lastRoomSearchResults;
         console.log(`💾 Force saving lastRoomSearchResults to session (before save):`, {
           count: context.lastRoomSearchResults.length
+        });
+      }
+      
+      // ✅ Lưu exploreContext vào session
+      if (exploreContext && Object.keys(exploreContext).length > 0) {
+        session.context.exploreContext = exploreContext;
+        console.log(`💾 Saving exploreContext to session:`, {
+          topic: exploreContext.topic,
+          hasNearbyPlaces: !!exploreContext.nearbyPlaces,
+          nearbyPlacesCount: exploreContext.nearbyPlaces?.length || 0,
+          lastCategory: exploreContext.lastCategory,
+          lastAskedFeature: exploreContext.lastAskedFeature
         });
       }
       
@@ -4146,7 +4872,42 @@ export const chatWithAI = asyncHandler(async (req, res) => {
     
     // ✅ Loại bỏ markdown links và các format đặc biệt khỏi response text khi đã có room cards (vì mỗi card đã có button riêng)
     // ✅ QUAN TRỌNG: Luôn clean response text để loại bỏ các format không cần thiết như "[roomDetailLink: {...}]"
-    let cleanedResponseText = removeMarkdownLinks(finalResponseText);
+    // ✅ QUAN TRỌNG: GIỮ LẠI link [text](explore) để frontend có thể render thành clickable link
+    console.log('🔍 Before removeMarkdownLinks - finalResponseText:', finalResponseText.substring(0, 300));
+    console.log('🔍 Checking for explore link in text:', /\[([^\]]+)\]\(explore\)/.test(finalResponseText));
+    
+    // ✅ QUAN TRỌNG: Try-catch để đảm bảo function chạy
+    let cleanedResponseText;
+    try {
+      cleanedResponseText = removeMarkdownLinks(finalResponseText);
+      console.log('✅ removeMarkdownLinks completed successfully');
+    } catch (error) {
+      console.error('❌ ERROR in removeMarkdownLinks:', error);
+      // Fallback: return text gốc nếu có lỗi
+      cleanedResponseText = finalResponseText;
+    }
+    
+    console.log('🔍 After removeMarkdownLinks - cleanedResponseText:', cleanedResponseText.substring(0, 300));
+    console.log('🔍 Final check - Has explore link in cleaned text:', /\[([^\]]+)\]\(explore\)/.test(cleanedResponseText));
+    
+    // ✅ Nếu link bị mất, restore lại từ text gốc
+    if (!/\[([^\]]+)\]\(explore\)/.test(cleanedResponseText) && /\[([^\]]+)\]\(explore\)/.test(finalResponseText)) {
+      console.error('❌ ERROR: Explore link was removed! Restoring from original...');
+      // Chỉ xóa các markdown links khác, giữ lại explore links
+      cleanedResponseText = finalResponseText;
+      // Xóa các markdown links khác (không phải explore)
+      cleanedResponseText = cleanedResponseText.replace(/\[([^\]]+)\]\(([^\)]+)\)/g, (match, linkText, url) => {
+        if (url.trim() === 'explore') {
+          return match; // Giữ lại explore links
+        }
+        return linkText; // Xóa các links khác
+      });
+      // Xóa các format đặc biệt
+      cleanedResponseText = cleanedResponseText.replace(/\[roomDetailLink:[^\]]+\]/g, '');
+      cleanedResponseText = cleanedResponseText.replace(/\[bookingLink:[^\]]+\]/g, '');
+      cleanedResponseText = cleanedResponseText.replace(/\[paymentLink:[^\]]+\]/g, '');
+      console.log('✅ Restored explore link from original text');
+    }
     if (finalRoomsData && finalRoomsData.length > 0) {
       console.log('✅ Removed markdown links and special formats from response text (room cards already have buttons)');
     } else {
