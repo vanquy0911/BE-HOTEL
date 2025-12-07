@@ -3,7 +3,7 @@ import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import asyncHandler from "express-async-handler";
 import crypto from "crypto";
-import sendEmail from "../utils/sendemail.js";
+import emailService from "../services/emailService.js";
 
 // Hàm đăng ký người dùng
 // @route   POST /api/users/register
@@ -25,6 +25,17 @@ export const registerUser = asyncHandler(async (req, res) => {
     password: hashedPassword,
     role: role || "user",
   });
+
+  // ✅ Gửi email chào mừng khi đăng ký thành công
+  try {
+    if (user && user.email) {
+      await emailService.sendUserRegistered(user);
+      console.log('✅ User registration welcome email sent to:', user.email);
+    }
+  } catch (emailError) {
+    console.error('⚠️ Failed to send registration welcome email:', emailError);
+    // Don't fail the request if email fails
+  }
 
   res.status(201).json({ message: "Đăng ký thành công!", user });
 });
@@ -209,30 +220,33 @@ export const forgotPassword = async (req, res) => {
     await user.save();
     console.log('✅ Reset token saved to user');
 
-    // Tạo URL reset
-    const resetUrl = `http://localhost:5000/api/users/reset-password/${resetToken}`;
-    console.log('🔗 Reset URL created:', resetUrl);
-
-    // Kiểm tra cấu hình email
-    console.log('🔍 Email config check:');
-    console.log('  EMAIL_USER:', process.env.EMAIL_USER ? 'Set' : 'NOT SET');
-    console.log('  EMAIL_PASS:', process.env.EMAIL_PASS ? 'Set' : 'NOT SET');
-
-    // Gửi email
-    console.log('📧 Attempting to send email...');
-    await sendEmail({
-      to: user.email,
-      subject: "Khôi phục mật khẩu - HomeBooking",
-      html: `
-        <h2>Xin chào ${user.fullName || "bạn"}!</h2>
-        <p>Bạn vừa yêu cầu khôi phục mật khẩu.</p>
-        <p>Nhấn vào liên kết dưới đây để đặt lại mật khẩu:</p>
-        <a href="${resetUrl}" target="_blank">${resetUrl}</a>
-        <p>Liên kết này sẽ hết hạn sau 15 phút.</p>
-      `
-    });
-
-    console.log('✅ Email sent successfully');
+    // Gửi email reset password với template đẹp
+    console.log('📧 Attempting to send password reset email...');
+    try {
+      await emailService.sendPasswordReset(user, resetToken);
+      console.log('✅ Password reset email sent successfully');
+    } catch (emailError) {
+      console.error('⚠️ Failed to send password reset email:', emailError);
+      // Fallback: sử dụng sendEmail cũ nếu emailService fail
+      try {
+        const sendEmail = (await import("../utils/sendemail.js")).default;
+        const resetUrl = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/reset-password/${resetToken}`;
+        await sendEmail({
+          to: user.email,
+          subject: "Khôi phục mật khẩu - Rayal Park Hotel",
+          html: `
+            <h2>Xin chào ${user.fullName || "bạn"}!</h2>
+            <p>Bạn vừa yêu cầu khôi phục mật khẩu.</p>
+            <p>Nhấn vào liên kết dưới đây để đặt lại mật khẩu:</p>
+            <a href="${resetUrl}" target="_blank">${resetUrl}</a>
+            <p>Liên kết này sẽ hết hạn sau 15 phút.</p>
+          `
+        });
+        console.log('✅ Fallback email sent successfully');
+      } catch (fallbackError) {
+        console.error('❌ Both email services failed:', fallbackError);
+      }
+    }
     res.status(200).json({ message: "Email khôi phục mật khẩu đã được gửi!" });
   } catch (error) {
     console.error('❌ Forgot password error:', error);

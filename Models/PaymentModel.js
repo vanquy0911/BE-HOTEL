@@ -39,7 +39,15 @@ const PaymentSchema = new mongoose.Schema({
   receiptNumber: {
     type: String
   },
+  // Ảnh bill chuyển khoản (cho manual bank transfer)
+  receiptImage: {
+    type: String // URL/path to image
+  },
   // Thông tin VNPay (nếu có)
+  vnpayTxnRef: {
+    type: String,
+    index: true
+  },
   vnpayTransactionId: {
     type: String
   },

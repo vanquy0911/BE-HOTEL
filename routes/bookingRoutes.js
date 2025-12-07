@@ -5,7 +5,7 @@ import {
   getBookingById,
   getMyBookings,
   updateBooking,
-  // deleteBooking,
+  deleteBooking,
   cancelBooking,
   confirmBooking,
 } from "../Controller/bookingController.js";
@@ -28,8 +28,8 @@ router.get("/:id", verifyToken, getBookingById);
 // Cập nhật đặt phòng
 router.put("/:id", verifyToken, updateBooking);
 
-// Xoá đặt phòng (admin hoặc user đều có thể tuỳ bạn thêm điều kiện kiểm tra)
-// router.delete("/:id", verifyToken, isAdmin, deleteBooking);
+// Xoá đặt phòng (chỉ admin)
+router.delete("/:id", verifyToken, isAdmin, deleteBooking);
 
 // Huỷ đặt phòng (người dùng hoặc admin)
 router.put("/:id/cancel", verifyToken, cancelBooking);

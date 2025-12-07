@@ -2,6 +2,10 @@ import asyncHandler from "express-async-handler";
 import Payment from "../Models/PaymentModel.js";
 import Booking from "../Models/BookingModel.js";
 import User from "../Models/UserModel.js";
+import Room from "../Models/RoomModel.js";
+import vnpayService from "../services/vnpayService.js";
+import uploadPaymentReceipt from "../Middlewares/uploadPayment.js";
+import emailService from "../services/emailService.js";
 
 // @desc    Tạo thanh toán mới
 // @route   POST /api/payments
@@ -10,10 +14,27 @@ export const createPayment = asyncHandler(async (req, res) => {
   try {
     console.log('🔍 createPayment - Request received');
     console.log('🔍 createPayment - Body:', req.body);
+    console.log('🔍 createPayment - Files:', req.file);
     console.log('🔍 createPayment - User:', req.user);
     
     const { bookingId, amount, method, notes } = req.body;
     const userId = req.user.id;
+    
+    // Lấy đường dẫn ảnh bill nếu có
+    let receiptImage = null;
+    if (req.file) {
+      // Tạo URL để truy cập ảnh
+      receiptImage = `/uploads/payments/${req.file.filename}`;
+      console.log('✅ Receipt image uploaded:', receiptImage);
+      console.log('✅ File info:', {
+        filename: req.file.filename,
+        originalname: req.file.originalname,
+        mimetype: req.file.mimetype,
+        size: req.file.size
+      });
+    } else {
+      console.warn('⚠️ No receipt image file in request');
+    }
 
     console.log('🔍 createPayment - Parsed data:', { bookingId, amount, method, notes, userId });
 
@@ -63,15 +84,36 @@ export const createPayment = asyncHandler(async (req, res) => {
       status: 'pending'
     });
 
-    const payment = await Payment.create({
+    const paymentData = {
       bookingId,
       amount,
       method,
       notes,
       status: 'pending'
-    });
+    };
+    
+    // Chỉ thêm receiptImage nếu có
+    if (receiptImage) {
+      paymentData.receiptImage = receiptImage;
+    }
+    
+    console.log('🔍 createPayment - Payment data to create:', paymentData);
+
+    const payment = await Payment.create(paymentData);
 
     console.log('✅ createPayment - Payment created successfully:', payment._id);
+    console.log('✅ Payment data after creation:', {
+      id: payment._id,
+      bookingId: payment.bookingId,
+      method: payment.method,
+      status: payment.status,
+      amount: payment.amount,
+      receiptImage: payment.receiptImage || null
+    });
+    
+    // Verify receiptImage was saved
+    const savedPayment = await Payment.findById(payment._id);
+    console.log('🔍 createPayment - Verified saved payment receiptImage:', savedPayment?.receiptImage || 'NOT FOUND');
 
     // Populate thông tin booking
     await payment.populate('bookingId');
@@ -208,9 +250,15 @@ export const getPaymentById = asyncHandler(async (req, res) => {
       });
     }
 
+    // Đảm bảo receiptImage luôn có giá trị (null nếu không có)
+    const paymentObj = payment.toObject();
+    if (!paymentObj.hasOwnProperty('receiptImage')) {
+      paymentObj.receiptImage = null;
+    }
+
     res.json({
       success: true,
-      payment
+      payment: paymentObj
     });
 
   } catch (error) {
@@ -250,13 +298,31 @@ export const confirmPayment = asyncHandler(async (req, res) => {
     await payment.markAsPaid(cashierId, receiptNumber, notes);
 
     // Cập nhật trạng thái booking
-    await Booking.findByIdAndUpdate(payment.bookingId, {
+    const booking = await Booking.findByIdAndUpdate(payment.bookingId, {
       status: 'confirmed'
-    });
+    }, { new: true });
 
     // Populate thông tin
     await payment.populate('bookingId');
     await payment.populate('cashierId', 'firstName lastName');
+
+    // ✅ Gửi email xác nhận thanh toán cho khách hàng
+    try {
+      if (booking) {
+        const user = await User.findById(booking.user);
+        const room = await Room.findById(booking.room);
+        
+        if (user && user.email && room) {
+          await emailService.sendPaymentConfirmed(booking, user, room, payment);
+          console.log('✅ Payment confirmation email sent to:', user.email);
+        } else {
+          console.warn('⚠️ Cannot send payment confirmation email: user or room not found');
+        }
+      }
+    } catch (emailError) {
+      console.error('⚠️ Failed to send payment confirmation email:', emailError);
+      // Don't fail the request if email fails
+    }
 
     res.json({
       success: true,
@@ -310,9 +376,27 @@ export const cancelPayment = asyncHandler(async (req, res) => {
     await payment.cancel(reason);
 
     // Cập nhật trạng thái booking
-    await Booking.findByIdAndUpdate(payment.bookingId, {
+    const booking = await Booking.findByIdAndUpdate(payment.bookingId, {
       status: 'cancelled'
-    });
+    }, { new: true });
+
+    // ✅ Gửi email thông báo hủy thanh toán cho khách hàng
+    try {
+      if (booking) {
+        const user = await User.findById(booking.user);
+        const room = await Room.findById(booking.room);
+        
+        if (user && user.email && room) {
+          await emailService.sendPaymentCancelled(booking, user, room, payment, reason);
+          console.log('✅ Payment cancellation email sent to:', user.email);
+        } else {
+          console.warn('⚠️ Cannot send payment cancellation email: user or room not found');
+        }
+      }
+    } catch (emailError) {
+      console.error('⚠️ Failed to send payment cancellation email:', emailError);
+      // Don't fail the request if email fails
+    }
 
     res.json({
       success: true,
@@ -331,6 +415,70 @@ export const cancelPayment = asyncHandler(async (req, res) => {
 });
 
 // @desc    Hoàn tiền
+// @desc    Cập nhật ảnh bill chuyển khoản cho payment
+// @route   PUT /api/payments/:id/receipt-image
+// @access  Private
+export const updateReceiptImage = asyncHandler(async (req, res) => {
+  try {
+    console.log('🔍 updateReceiptImage - Request received');
+    console.log('🔍 updateReceiptImage - Payment ID:', req.params.id);
+    console.log('🔍 updateReceiptImage - File:', req.file);
+    
+    const payment = await Payment.findById(req.params.id);
+    if (!payment) {
+      return res.status(404).json({
+        success: false,
+        message: "Không tìm thấy thanh toán"
+      });
+    }
+
+    // Kiểm tra quyền truy cập
+    const userId = req.user.id;
+    const booking = await Booking.findById(payment.bookingId);
+    if (!booking) {
+      return res.status(404).json({
+        success: false,
+        message: "Không tìm thấy đơn đặt phòng"
+      });
+    }
+
+    // Chỉ cho phép user sở hữu booking hoặc admin
+    if (req.user.role !== 'admin' && booking.user.toString() !== userId) {
+      return res.status(403).json({
+        success: false,
+        message: "Bạn không có quyền cập nhật thanh toán này"
+      });
+    }
+
+    // Cập nhật receiptImage nếu có file upload
+    if (req.file) {
+      payment.receiptImage = `/uploads/payments/${req.file.filename}`;
+      await payment.save();
+      
+      console.log('✅ Receipt image updated:', payment.receiptImage);
+      
+      res.json({
+        success: true,
+        message: "Cập nhật ảnh bill thành công",
+        payment
+      });
+    } else {
+      return res.status(400).json({
+        success: false,
+        message: "Không có file ảnh được upload"
+      });
+    }
+
+  } catch (error) {
+    console.error('❌ Update receipt image error:', error);
+    res.status(500).json({
+      success: false,
+      message: "Lỗi server khi cập nhật ảnh bill",
+      error: error.message
+    });
+  }
+});
+
 // @route   PUT /api/payments/:id/refund
 // @access  Private/Admin
 export const refundPayment = asyncHandler(async (req, res) => {
@@ -358,9 +506,27 @@ export const refundPayment = asyncHandler(async (req, res) => {
     await payment.refund(refundAmount, reason);
 
     // Cập nhật trạng thái booking
-    await Booking.findByIdAndUpdate(payment.bookingId, {
+    const booking = await Booking.findByIdAndUpdate(payment.bookingId, {
       status: 'cancelled'
-    });
+    }, { new: true });
+
+    // ✅ Gửi email thông báo hoàn tiền cho khách hàng
+    try {
+      if (booking) {
+        const user = await User.findById(booking.user);
+        const room = await Room.findById(booking.room);
+        
+        if (user && user.email && room) {
+          await emailService.sendPaymentRefunded(booking, user, room, payment, refundAmount, reason);
+          console.log('✅ Payment refund email sent to:', user.email);
+        } else {
+          console.warn('⚠️ Cannot send refund email: user or room not found');
+        }
+      }
+    } catch (emailError) {
+      console.error('⚠️ Failed to send payment refund email:', emailError);
+      // Don't fail the request if email fails
+    }
 
     res.json({
       success: true,
@@ -446,5 +612,151 @@ export const getPaymentStats = asyncHandler(async (req, res) => {
       message: "Lỗi server khi lấy thống kê thanh toán",
       error: error.message
     });
+  }
+});
+
+// @desc    Tạo URL thanh toán VNPay
+// @route   POST /api/payments/vnpay/create
+// @access  Private
+export const createVnpayPayment = asyncHandler(async (req, res) => {
+  try {
+    const { bookingId } = req.body;
+    const userId = req.user.id;
+
+    // Kiểm tra booking
+    const booking = await Booking.findById(bookingId)
+      .populate('user')
+      .populate('room');
+    
+    if (!booking) {
+      return res.status(404).json({
+        success: false,
+        message: "Không tìm thấy đơn đặt phòng"
+      });
+    }
+
+    if (booking.user._id.toString() !== userId) {
+      return res.status(403).json({
+        success: false,
+        message: "Bạn không có quyền thanh toán đơn này"
+      });
+    }
+
+    // Kiểm tra đã có payment chưa
+    let payment = await Payment.findOne({ bookingId });
+    
+    if (!payment) {
+      // Tạo payment mới
+      payment = await Payment.create({
+        bookingId,
+        amount: booking.totalPrice,
+        method: 'vnpay',
+        status: 'pending'
+      });
+    } else if (payment.status !== 'pending') {
+      return res.status(400).json({
+        success: false,
+        message: "Đơn đặt phòng này đã được thanh toán"
+      });
+    }
+
+    // Tạo VNPay payment URL
+    // VNPay yêu cầu vnp_TxnRef là số, nên dùng payment._id hoặc tạo số mới
+    const orderInfo = `Thanh toan don dat phong ${booking._id.toString().slice(-8)}`;
+    const ipAddr = req.ip || req.connection.remoteAddress || req.headers['x-forwarded-for'] || '127.0.0.1';
+    
+    // Tạo số từ payment ID (chỉ lấy phần số) hoặc dùng timestamp
+    let txnRefId = payment._id.toString().replace(/[^0-9]/g, '');
+    if (!txnRefId || txnRefId.length === 0) {
+      // Nếu không có số, dùng timestamp
+      txnRefId = Date.now().toString();
+    }
+    // Đảm bảo txnRef là 8 ký tự số
+    txnRefId = txnRefId.slice(-8).padStart(8, '0');
+    
+    // Lưu txnRef vào payment để tìm lại sau
+    payment.vnpayTxnRef = txnRefId;
+    await payment.save();
+    
+    console.log('🔍 Creating VNPay URL:', {
+      bookingId: booking._id,
+      paymentId: payment._id,
+      txnRefId,
+      amount: booking.totalPrice,
+      ipAddr
+    });
+    
+    const paymentUrl = vnpayService.createPaymentUrl(
+      orderInfo,
+      booking.totalPrice,
+      txnRefId,
+      ipAddr
+    );
+
+    // Lưu payment ID để tracking
+    res.json({
+      success: true,
+      paymentUrl,
+      paymentId: payment._id,
+      message: "Tạo URL thanh toán thành công"
+    });
+
+  } catch (error) {
+    console.error('❌ Create VNPay payment error:', error);
+    res.status(500).json({
+      success: false,
+      message: "Lỗi server khi tạo thanh toán VNPay",
+      error: error.message
+    });
+  }
+});
+
+// @desc    VNPay callback
+// @route   GET /api/payments/vnpay/callback
+// @access  Public
+export const vnpayCallback = asyncHandler(async (req, res) => {
+  try {
+    const vnp_Params = req.query;
+    const result = vnpayService.verifyPaymentCallback(vnp_Params);
+
+    if (!result.isValid) {
+      return res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:3000'}/payment?status=failed&message=Invalid signature`);
+    }
+
+    // Tìm payment bằng vnpayTxnRef (vnp_TxnRef từ VNPay)
+    const payment = await Payment.findOne({ vnpayTxnRef: result.orderId });
+    if (!payment) {
+      console.error('❌ Payment not found for txnRef:', result.orderId);
+      return res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:3000'}/payment?status=failed&message=Payment not found`);
+    }
+
+    // Kiểm tra response code
+    // 00 = Success
+    if (result.responseCode === '00') {
+      // Cập nhật payment
+      payment.status = 'paid';
+      payment.paidAt = new Date();
+      payment.vnpayTransactionId = result.transactionId;
+      payment.vnpayResponseCode = result.responseCode;
+      await payment.save();
+
+      // Cập nhật booking
+      await Booking.findByIdAndUpdate(payment.bookingId, {
+        status: 'confirmed'
+      });
+
+      return res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:3000'}/payment-success?paymentId=${payment._id}`);
+    } else {
+      // Payment failed
+      payment.status = 'cancelled';
+      payment.vnpayResponseCode = result.responseCode;
+      await payment.save();
+
+      return res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:3000'}/payment?status=failed&code=${result.responseCode}`);
+    }
+
+  } catch (error) {
+    console.error('❌ VNPay callback error:', error);
+    return res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:3000'}/payment?status=error`);
   }
 });

@@ -4,8 +4,10 @@ import Booking from "../Models/BookingModel.js";
 import Room from "../Models/RoomModel.js";
 import Promotion from "../Models/PromotionModel.js";
 import User from "../Models/UserModel.js";
+import Payment from "../Models/PaymentModel.js";
 import googleCalendarService from "../services/googleCalendarService.js";
 import googleSheetsService from "../services/googleSheetsService.js";
+import emailService from "../services/emailService.js";
 
 // Hàm tạo đơn đặt phòng mới
 // @route   POST /api/bookings
@@ -225,6 +227,32 @@ export const createBooking = asyncHandler(async (req, res) => {
         console.error('❌ Google Sheets error (non-blocking):', error.message);
       }
 
+      // ✅ BƯỚC 4: Gửi email xác nhận đặt phòng (với payment info nếu có)
+      try {
+        const user = await User.findById(userId);
+        if (user && user.email) {
+          // Tìm payment nếu có (có thể đã được tạo trước đó)
+          let payment = null;
+          try {
+            payment = await Payment.findOne({ bookingId: finalBooking._id })
+              .select('method status amount receiptNumber receiptImage paidAt notes');
+            if (payment) {
+              console.log('✅ Found payment for email:', payment._id);
+            }
+          } catch (paymentError) {
+            console.log('ℹ️ No payment found yet, will send email without payment info');
+          }
+          
+          await emailService.sendBookingConfirmation(finalBooking, user, room, payment);
+          console.log('✅ Booking confirmation email sent to:', user.email);
+        } else {
+          console.warn('⚠️ User not found or no email address');
+        }
+      } catch (emailError) {
+        console.error('⚠️ Failed to send booking confirmation email:', emailError);
+        // Don't fail the request if email fails
+      }
+
       res.status(201).json({
         success: true,
         message: "Đặt phòng thành công!",
@@ -260,11 +288,43 @@ export const getAllBookings = asyncHandler(async (req, res) => {
       .populate("room", "name roomNumber roomType pricePerNight image")
       .sort({ createdAt: -1 });
     
-    console.log('✅ Found bookings:', bookings.length);
+    // Lấy payment info cho mỗi booking (bao gồm receiptImage)
+    const bookingsWithPayment = await Promise.all(
+      bookings.map(async (booking) => {
+        const payment = await Payment.findOne({ bookingId: booking._id })
+          .select('method status amount paidAt notes receiptNumber receiptImage _id');
+        const bookingObj = booking.toObject();
+        
+        // Xử lý payment: đảm bảo receiptImage luôn có giá trị (null nếu không có)
+        if (payment) {
+          const paymentObj = payment.toObject();
+          // Nếu payment không có field receiptImage, set thành null
+          if (!paymentObj.hasOwnProperty('receiptImage')) {
+            paymentObj.receiptImage = null;
+          }
+          bookingObj.payment = paymentObj;
+          
+          console.log(`✅ Booking ${booking._id} has payment:`, {
+            id: payment._id,
+            method: payment.method,
+            status: payment.status,
+            hasReceiptImage: !!paymentObj.receiptImage,
+            receiptImage: paymentObj.receiptImage
+          });
+        } else {
+          bookingObj.payment = null;
+          console.log(`⚠️ Booking ${booking._id} has no payment`);
+        }
+        
+        return bookingObj;
+      })
+    );
+    
+    console.log('✅ Found bookings:', bookingsWithPayment.length);
     res.status(200).json({
       success: true,
-      data: bookings,
-      count: bookings.length
+      data: bookingsWithPayment,
+      count: bookingsWithPayment.length
     });
   } catch (error) {
     console.error('❌ Error getting bookings:', error);
@@ -280,7 +340,9 @@ export const getAllBookings = asyncHandler(async (req, res) => {
 // @route   GET /api/bookings/:id
 export const getBookingById = asyncHandler(async (req, res) => {
   try {
-    const booking = await Booking.findById(req.params.id).populate("user room", "-password");
+    const booking = await Booking.findById(req.params.id)
+      .populate("user", "fullName email phone")
+      .populate("room", "name roomNumber roomType pricePerNight image");
 
     if (!booking) {
       return res.status(404).json({
@@ -300,9 +362,35 @@ export const getBookingById = asyncHandler(async (req, res) => {
       });
     }
 
+    // Lấy payment info (bao gồm receiptImage)
+    const payment = await Payment.findOne({ bookingId: booking._id })
+      .select('method status amount paidAt notes receiptNumber receiptImage _id');
+    
+    console.log('🔍 getBookingById - Payment found:', payment ? 'Yes' : 'No');
+    if (payment) {
+      // Đảm bảo receiptImage luôn có giá trị (null nếu không có)
+      const paymentObj = payment.toObject();
+      if (!paymentObj.hasOwnProperty('receiptImage')) {
+        paymentObj.receiptImage = null;
+      }
+      
+      console.log('🔍 getBookingById - Payment data:', {
+        id: payment._id,
+        method: payment.method,
+        status: payment.status,
+        receiptImage: paymentObj.receiptImage
+      });
+      
+      // Gán lại payment object với receiptImage đã được xử lý
+      Object.assign(payment, paymentObj);
+    }
+    
+    const bookingObj = booking.toObject();
+    bookingObj.payment = payment || null;
+
     res.status(200).json({
       success: true,
-      booking: booking
+      booking: bookingObj
     });
   } catch (error) {
     console.error('❌ Error getting booking by ID:', error);
@@ -320,22 +408,43 @@ export const getMyBookings = asyncHandler(async (req, res) => {
   try {
     const userId = req.user?.id || req.user?._id;
     
+    console.log('🔍 getMyBookings - req.user:', req.user);
+    console.log('🔍 getMyBookings - userId:', userId);
+    
     if (!userId) {
+      console.warn('⚠️ getMyBookings - No userId found');
       return res.status(401).json({
         success: false,
         message: "Người dùng chưa đăng nhập"
       });
     }
 
+    console.log('🔍 getMyBookings - Querying bookings for user:', userId);
     const bookings = await Booking.find({ user: userId })
       .populate("user", "fullName email phone")
       .populate("room", "name roomNumber roomType pricePerNight image")
       .sort({ createdAt: -1 });
     
+    console.log(`✅ getMyBookings - Found ${bookings.length} bookings for user ${userId}`);
+    
+    // Lấy payment info cho mỗi booking (bao gồm receiptImage)
+    const bookingsWithPayment = await Promise.all(
+      bookings.map(async (booking) => {
+        const payment = await Payment.findOne({ bookingId: booking._id })
+          .select('method status amount paidAt notes receiptNumber receiptImage _id');
+        const bookingObj = booking.toObject();
+        bookingObj.payment = payment || null;
+        console.log(`📦 Booking ${booking._id}: room=${bookingObj.room?.name}, status=${bookingObj.status}, payment=${payment ? payment.status : 'none'}`);
+        return bookingObj;
+      })
+    );
+    
+    console.log(`✅ getMyBookings - Returning ${bookingsWithPayment.length} bookings with payment info`);
+    
     res.status(200).json({
       success: true,
-      data: bookings,
-      count: bookings.length
+      data: bookingsWithPayment,
+      count: bookingsWithPayment.length
     });
   } catch (error) {
     console.error('❌ Error getting user bookings:', error);
@@ -349,72 +458,134 @@ export const getMyBookings = asyncHandler(async (req, res) => {
 
 
 // Hàm huỷ đặt phòng
-// @route   DELETE /api/bookings/:id
+// @route   PUT /api/bookings/:id/cancel
 export const cancelBooking = asyncHandler(async (req, res) => {
-  const bookingId = req.params.id;
-
-  const booking = await Booking.findById(bookingId);
-  if (!booking) {
-    res.status(404);
-    throw new Error("Không tìm thấy đặt phòng.");
-  }
-
-  const room = await Room.findById(booking.room);
-  if (!room) {
-    res.status(404);
-    throw new Error("Phòng không tồn tại.");
-  }
-
-  // ✅ Xóa Google Calendar event nếu có
-  if (booking.calendarEventId) {
-    try {
-      await googleCalendarService.deleteBookingEvent(booking.calendarEventId);
-    } catch (error) {
-      console.error('❌ Google Calendar delete error (non-blocking):', error.message);
-    }
-  }
-
-  // ✅ Cập nhật status trong Google Sheets thành 'cancelled' trước khi xóa
   try {
-    const user = await User.findById(booking.user);
-    const nights = Math.ceil(
-      (new Date(booking.checkOutDate).getTime() - new Date(booking.checkInDate).getTime()) / 
-      (1000 * 60 * 60 * 24)
-    );
-    
-    await googleSheetsService.updateBookingRow(bookingId, {
-      bookingId: bookingId,
-      customerName: user?.fullName || 'Khách vãng lai',
-      email: user?.email || '',
-      phone: user?.phone || '',
-      roomName: room.name,
-      roomNumber: room.roomNumber || '',
-      checkIn: booking.checkInDate,
-      checkOut: booking.checkOutDate,
-      nights: nights,
-      guests: booking.roomQuantity || 1,
-      totalPrice: booking.totalPrice,
-      status: 'cancelled',
-      note: booking.note || '',
-      createdAt: booking.createdAt
+    const bookingId = req.params.id;
+    console.log('🔍 cancelBooking - Booking ID:', bookingId);
+
+    const booking = await Booking.findById(bookingId);
+    if (!booking) {
+      console.warn('⚠️ cancelBooking - Booking not found:', bookingId);
+      return res.status(404).json({
+        success: false,
+        message: "Không tìm thấy đặt phòng."
+      });
+    }
+
+    // Kiểm tra booking đã bị hủy chưa
+    if (booking.status === 'cancelled') {
+      console.warn('⚠️ cancelBooking - Booking already cancelled:', bookingId);
+      return res.status(400).json({
+        success: false,
+        message: "Đơn đặt phòng này đã được hủy trước đó."
+      });
+    }
+
+    const room = await Room.findById(booking.room);
+    if (!room) {
+      console.error('❌ cancelBooking - Room not found for booking:', bookingId, 'Room ID:', booking.room);
+      // Vẫn tiếp tục cancel booking dù room không tồn tại (chỉ đổi status, không xóa)
+      booking.status = 'cancelled';
+      await booking.save();
+      return res.status(200).json({
+        success: true,
+        message: "Đã huỷ đặt phòng thành công (phòng không tồn tại)."
+      });
+    }
+
+    // ✅ Xóa Google Calendar event nếu có
+    if (booking.calendarEventId) {
+      try {
+        await googleCalendarService.deleteBookingEvent(booking.calendarEventId);
+      } catch (error) {
+        console.error('❌ Google Calendar delete error (non-blocking):', error.message);
+      }
+    }
+
+    // ✅ Cập nhật status trong Google Sheets thành 'cancelled' trước khi xóa
+    try {
+      const user = await User.findById(booking.user);
+      const nights = Math.ceil(
+        (new Date(booking.checkOutDate).getTime() - new Date(booking.checkInDate).getTime()) / 
+        (1000 * 60 * 60 * 24)
+      );
+      
+      await googleSheetsService.updateBookingRow(bookingId, {
+        bookingId: bookingId,
+        customerName: user?.fullName || 'Khách vãng lai',
+        email: user?.email || '',
+        phone: user?.phone || '',
+        roomName: room.name,
+        roomNumber: room.roomNumber || '',
+        checkIn: booking.checkInDate,
+        checkOut: booking.checkOutDate,
+        nights: nights,
+        guests: booking.roomQuantity || 1,
+        totalPrice: booking.totalPrice,
+        status: 'cancelled',
+        note: booking.note || '',
+        createdAt: booking.createdAt
+      });
+    } catch (error) {
+      console.error('❌ Google Sheets update error (non-blocking):', error.message);
+    }
+
+    // Tăng lại số lượng phòng (nếu có field availableRooms)
+    try {
+      if (room.availableRooms !== undefined) {
+        room.availableRooms = (room.availableRooms || 0) + 1;
+      }
+      room.isAvailable = true;
+      await room.save();
+      console.log('✅ cancelBooking - Room updated:', room.name);
+    } catch (error) {
+      console.error('❌ cancelBooking - Error updating room (non-blocking):', error.message);
+    }
+
+    // ✅ QUAN TRỌNG: Chỉ đổi status thành 'cancelled', KHÔNG XÓA booking
+    // Để user vẫn thấy booking của mình
+    booking.status = 'cancelled';
+    await booking.save();
+    console.log('✅ cancelBooking - Booking cancelled (not deleted):', bookingId);
+
+    // ✅ Gửi email thông báo hủy đặt phòng cho khách hàng
+    try {
+      const user = await User.findById(booking.user);
+      if (user && user.email) {
+        // Tìm payment nếu có
+        let payment = null;
+        try {
+          payment = await Payment.findOne({ bookingId: booking._id })
+            .select('method status amount refundAmount');
+        } catch (paymentError) {
+          console.log('ℹ️ No payment found for cancellation email');
+        }
+        
+        await emailService.sendBookingCancelled(booking, user, room, payment, null);
+        console.log('✅ Booking cancellation email sent to:', user.email);
+      } else {
+        console.warn('⚠️ Cannot send cancellation email: user not found or no email');
+      }
+    } catch (emailError) {
+      console.error('⚠️ Failed to send booking cancellation email:', emailError);
+      // Don't fail the request if email fails
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "Đã huỷ đặt phòng thành công.",
+      roomUpdated: room.name,
+      currentAvailableRooms: room.availableRooms,
     });
   } catch (error) {
-    console.error('❌ Google Sheets update error (non-blocking):', error.message);
+    console.error('❌ cancelBooking - Error:', error);
+    res.status(500).json({
+      success: false,
+      message: "Lỗi server khi hủy đặt phòng",
+      error: error.message
+    });
   }
-
-  // Tăng lại số lượng phòng
-  room.availableRooms += 1;
-  room.isAvailable = true;
-  await room.save();
-
-  // Xoá đơn đặt
-  await Booking.findByIdAndDelete(bookingId);
-
-  res.status(200).json({
-    message: "Đã huỷ đặt phòng thành công.",
-    roomUpdated: room.name,
-    currentAvailableRooms: room.availableRooms,
-  });
 });
 
 
@@ -662,4 +833,67 @@ export const confirmBooking = asyncHandler(async (req, res) => {
   }
 
   res.json({ message: "Đã xác nhận đơn đặt phòng", booking });
+});
+
+// @desc    Xóa đặt phòng (Admin only)
+// @route   DELETE /api/bookings/:id
+// @access  Private/Admin
+// Hàm xóa đặt phòng (chỉ admin, nhưng chỉ đánh dấu cancelled để không ảnh hưởng user)
+// @route   DELETE /api/bookings/:id
+export const deleteBooking = asyncHandler(async (req, res) => {
+  try {
+    const booking = await Booking.findById(req.params.id);
+    
+    if (!booking) {
+      return res.status(404).json({
+        success: false,
+        message: "Không tìm thấy đơn đặt phòng"
+      });
+    }
+
+    // ✅ QUAN TRỌNG: Admin không nên xóa thật sự booking
+    // Chỉ đổi status thành 'cancelled' để user vẫn thấy booking của mình
+    // Chỉ xóa thật sự trong trường hợp đặc biệt (booking test, booking lỗi, etc.)
+    
+    // Kiểm tra có payment không
+    const payment = await Payment.findOne({ bookingId: booking._id });
+    if (payment && payment.status === 'paid') {
+      // Nếu đã thanh toán, chỉ đổi status, không xóa
+      booking.status = 'cancelled';
+      await booking.save();
+      return res.json({
+        success: true,
+        message: "Đã hủy đơn đặt phòng (đã thanh toán, không thể xóa hoàn toàn)"
+      });
+    }
+
+    // Xóa Google Calendar event nếu có
+    if (booking.calendarEventId) {
+      try {
+        await googleCalendarService.deleteBookingEvent(booking.calendarEventId);
+      } catch (error) {
+        console.error('❌ Google Calendar delete error (non-blocking):', error.message);
+      }
+    }
+
+    // ✅ Chỉ đổi status thành 'cancelled', KHÔNG XÓA
+    // Để user vẫn thấy booking của mình
+    booking.status = 'cancelled';
+    await booking.save();
+
+    console.log('✅ deleteBooking - Booking cancelled (not deleted):', req.params.id);
+
+    res.json({
+      success: true,
+      message: "Đã hủy đơn đặt phòng thành công"
+    });
+
+  } catch (error) {
+    console.error('❌ Delete booking error:', error);
+    res.status(500).json({
+      success: false,
+      message: "Lỗi server khi hủy đơn đặt phòng",
+      error: error.message
+    });
+  }
 });
