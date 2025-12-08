@@ -20,29 +20,33 @@ export const sendCheckInReminders = async () => {
     const tomorrowEnd = new Date(tomorrow);
     tomorrowEnd.setHours(23, 59, 59, 999);
     
-    // Tìm các booking có check-in vào ngày mai và status = 'confirmed'
+    //  Tìm các booking có check-in vào ngày mai, status = 'confirmed' và CHƯA gửi reminder
     const bookings = await Booking.find({
       checkInDate: {
         $gte: tomorrow,
         $lte: tomorrowEnd
       },
-      status: 'confirmed'
+      status: 'confirmed',
+      checkInReminderSent: false // ✅ CHỈ lấy bookings chưa gửi reminder
     })
       .populate('user', 'fullName email')
       .populate('room', 'name roomNumber');
     
-    console.log(`📧 [Email Reminder] Found ${bookings.length} bookings with check-in tomorrow`);
+    console.log(`📧 [Email Reminder] Found ${bookings.length} bookings with check-in tomorrow (not sent yet)`);
     
     let sentCount = 0;
     let errorCount = 0;
     
     for (const booking of bookings) {
       try {
-        // Kiểm tra xem đã gửi email nhắc nhở chưa (có thể thêm field reminderSent vào booking model)
-        // Tạm thời gửi mỗi ngày một lần
-        
         if (booking.user && booking.user.email && booking.room) {
           await emailService.sendReminderCheckIn(booking, booking.user, booking.room);
+          
+          // ✅ ĐÁNH DẤU ĐÃ GỬI để tránh gửi lại
+          booking.checkInReminderSent = true;
+          booking.checkInReminderSentAt = new Date();
+          await booking.save();
+          
           sentCount++;
           console.log(`✅ [Email Reminder] Check-in reminder sent to ${booking.user.email} for booking ${booking._id}`);
         }
@@ -74,18 +78,19 @@ export const sendThankYouAfterCheckout = async () => {
     const todayEnd = new Date(today);
     todayEnd.setHours(23, 59, 59, 999);
     
-    // Tìm các booking có check-out hôm nay và status = 'confirmed'
+    // ✅ Tìm các booking có check-out hôm nay, status = 'confirmed' và CHƯA gửi thank you email
     const bookings = await Booking.find({
       checkOutDate: {
         $gte: today,
         $lte: todayEnd
       },
-      status: 'confirmed'
+      status: 'confirmed',
+      thankYouEmailSent: false // ✅ CHỈ lấy bookings chưa gửi thank you email
     })
       .populate('user', 'fullName email')
       .populate('room', 'name roomNumber');
     
-    console.log(`📧 [Email Reminder] Found ${bookings.length} bookings checked out today`);
+    console.log(`📧 [Email Reminder] Found ${bookings.length} bookings checked out today (not sent yet)`);
     
     let sentCount = 0;
     let errorCount = 0;
@@ -94,6 +99,12 @@ export const sendThankYouAfterCheckout = async () => {
       try {
         if (booking.user && booking.user.email && booking.room) {
           await emailService.sendThankYouAfterCheckout(booking, booking.user, booking.room);
+          
+          // ✅ ĐÁNH DẤU ĐÃ GỬI để tránh gửi lại
+          booking.thankYouEmailSent = true;
+          booking.thankYouEmailSentAt = new Date();
+          await booking.save();
+          
           sentCount++;
           console.log(`✅ [Email Reminder] Thank you email sent to ${booking.user.email} for booking ${booking._id}`);
         }
@@ -122,17 +133,18 @@ export const sendPaymentReminders = async () => {
     const twentyFourHoursAgo = new Date();
     twentyFourHoursAgo.setHours(twentyFourHoursAgo.getHours() - 24);
     
-    // Tìm các booking có status = 'pending' và tạo hơn 24 giờ trước
+    // ✅ Tìm các booking có status = 'pending', tạo hơn 24 giờ trước và CHƯA gửi payment reminder
     const bookings = await Booking.find({
       status: 'pending',
       createdAt: {
         $lte: twentyFourHoursAgo
-      }
+      },
+      paymentReminderSent: false // ✅ CHỈ lấy bookings chưa gửi payment reminder
     })
       .populate('user', 'fullName email')
       .populate('room', 'name roomNumber');
     
-    console.log(`📧 [Email Reminder] Found ${bookings.length} pending bookings older than 24 hours`);
+    console.log(`📧 [Email Reminder] Found ${bookings.length} pending bookings older than 24 hours (not sent yet)`);
     
     let sentCount = 0;
     let errorCount = 0;
@@ -148,6 +160,12 @@ export const sendPaymentReminders = async () => {
         if (payment && booking.user && booking.user.email && booking.room) {
           // Chỉ gửi nếu payment vẫn pending
           await emailService.sendPaymentReminder(booking, booking.user, booking.room, payment);
+          
+          // ✅ ĐÁNH DẤU ĐÃ GỬI để tránh gửi lại
+          booking.paymentReminderSent = true;
+          booking.paymentReminderSentAt = new Date();
+          await booking.save();
+          
           sentCount++;
           console.log(`✅ [Email Reminder] Payment reminder sent to ${booking.user.email} for booking ${booking._id}`);
         }

@@ -50,6 +50,32 @@ const bookingSchema = new mongoose.Schema(
       type: String,
       default: null,
     }, // ID của event trong Google Calendar
+    
+    // ✅ Email reminder tracking - để tránh gửi email nhiều lần
+    checkInReminderSent: {
+      type: Boolean,
+      default: false
+    },
+    checkInReminderSentAt: {
+      type: Date,
+      default: null
+    },
+    paymentReminderSent: {
+      type: Boolean,
+      default: false
+    },
+    paymentReminderSentAt: {
+      type: Date,
+      default: null
+    },
+    thankYouEmailSent: {
+      type: Boolean,
+      default: false
+    },
+    thankYouEmailSentAt: {
+      type: Date,
+      default: null
+    },
     createdAt: { type: Date, default: Date.now },
   },
   {
