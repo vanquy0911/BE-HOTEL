@@ -3,6 +3,7 @@ import mongoose from "mongoose";
 import Booking from "../Models/BookingModel.js";
 import Room from "../Models/RoomModel.js";
 import Promotion from "../Models/PromotionModel.js";
+import Payment from "../Models/PaymentModel.js";
 
 // Hàm tạo đơn đặt phòng mới
 // @route   POST /api/bookings
@@ -176,11 +177,21 @@ export const getAllBookings = asyncHandler(async (req, res) => {
       .populate("room", "name roomNumber roomType pricePerNight image")
       .sort({ createdAt: -1 });
     
-    console.log('✅ Found bookings:', bookings.length);
+    // Populate payment cho mỗi booking
+    const bookingsWithPayment = await Promise.all(
+      bookings.map(async (booking) => {
+        const payment = await Payment.findOne({ bookingId: booking._id });
+        const bookingObj = booking.toObject();
+        bookingObj.payment = payment;
+        return bookingObj;
+      })
+    );
+    
+    console.log('✅ Found bookings:', bookingsWithPayment.length);
     res.status(200).json({
       success: true,
-      data: bookings,
-      count: bookings.length
+      data: bookingsWithPayment,
+      count: bookingsWithPayment.length
     });
   } catch (error) {
     console.error('❌ Error getting bookings:', error);
@@ -202,7 +213,15 @@ export const getBookingById = asyncHandler(async (req, res) => {
     throw new Error("Không tìm thấy đơn đặt phòng");
   }
 
-  res.status(200).json(booking);
+  // Populate payment cho booking
+  const payment = await Payment.findOne({ bookingId: booking._id });
+  const bookingObj = booking.toObject();
+  bookingObj.payment = payment;
+
+  res.status(200).json({
+    success: true,
+    booking: bookingObj
+  });
 });
 
 

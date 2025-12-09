@@ -36,7 +36,7 @@ app.use(express.urlencoded({ limit: '50mb', extended: true })); // xử lý form
 app.use("/api/rooms", roomRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/bookings", bookingRoutes);
-app.use("/api/payments", paymentRoutes);
+app.use("/api/payments/momo", paymentRoutes);
 app.use("/api/reports", reportRoutes);
 app.use("/api/chat", chatRoutes);
 app.use("/api/services", serviceRoutes);

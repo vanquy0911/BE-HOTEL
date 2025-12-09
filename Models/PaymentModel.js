@@ -22,7 +22,7 @@ const PaymentSchema = new mongoose.Schema({
   },
   method: {
     type: String,
-    enum: ['cash', 'card', 'bank_transfer', 'vnpay'],
+    enum: ['cash', 'card', 'bank_transfer', 'vnpay', 'momo'],
     required: true
   },
   paidAt: {
@@ -44,6 +44,23 @@ const PaymentSchema = new mongoose.Schema({
     type: String
   },
   vnpayResponseCode: {
+    type: String
+  },
+  // Thông tin MoMo (nếu có)
+  momoOrderId: {
+    type: String,
+    index: true
+  },
+  momoRequestId: {
+    type: String
+  },
+  momoTransactionId: {
+    type: String
+  },
+  momoResultCode: {
+    type: String
+  },
+  momoMessage: {
     type: String
   },
   // Thông tin hoàn tiền

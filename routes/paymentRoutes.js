@@ -1,11 +1,12 @@
 import express from "express";
 import {
-  createPayment,
+  createMomoPayment,
   getAllPayments,
   getPaymentById,
   confirmPayment,
   cancelPayment,
   refundPayment,
+  momoIPN,
   getPaymentStats
 } from "../Controller/paymentController.js";
 import { verifyToken, isAdmin } from "../Middlewares/authMiddleware.js";
@@ -15,7 +16,9 @@ const router = express.Router();
 // @route   POST /api/payments
 // @desc    Tạo thanh toán mới
 // @access  Private
-router.post("/", verifyToken, createPayment);
+router.post("/create", verifyToken, createMomoPayment);
+// IPN callback từ MoMo (không cần authentication)
+router.post("/ipn", momoIPN);
 
 // @route   GET /api/payments
 // @desc    Lấy tất cả thanh toán (Admin)

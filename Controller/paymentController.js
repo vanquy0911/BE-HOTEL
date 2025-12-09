@@ -2,66 +2,37 @@ import asyncHandler from "express-async-handler";
 import Payment from "../Models/PaymentModel.js";
 import Booking from "../Models/BookingModel.js";
 import User from "../Models/UserModel.js";
+import crypto from "crypto";
+import axios from "axios";
 
-// @desc    Tạo thanh toán mới
-// @route   POST /api/payments
-// @access  Private
 export const createPayment = asyncHandler(async (req, res) => {
   try {
-    console.log('🔍 createPayment - Request received');
-    console.log('🔍 createPayment - Body:', req.body);
-    console.log('🔍 createPayment - User:', req.user);
-    
     const { bookingId, amount, method, notes } = req.body;
     const userId = req.user.id;
 
-    console.log('🔍 createPayment - Parsed data:', { bookingId, amount, method, notes, userId });
-
-    // Validation
     if (!bookingId || !amount || !method) {
-      console.log('❌ createPayment - Missing required fields');
       return res.status(400).json({
         success: false,
-        message: "Thiếu thông tin bắt buộc",
-        required: ["bookingId", "amount", "method"]
+        message: "Thiếu thông tin bắt buộc"
       });
     }
 
-    // Kiểm tra booking có tồn tại không
     const booking = await Booking.findById(bookingId);
     if (!booking) {
-      return res.status(404).json({
-        success: false,
-        message: "Không tìm thấy đơn đặt phòng"
-      });
+      return res.status(404).json({ success: false, message: "Không tìm thấy đơn đặt phòng" });
     }
 
-    // Kiểm tra booking có thuộc về user không
     if (booking.user.toString() !== userId) {
-      return res.status(403).json({
-        success: false,
-        message: "Bạn không có quyền truy cập đơn đặt phòng này"
-      });
+      return res.status(403).json({ success: false, message: "Bạn không có quyền truy cập" });
     }
 
-    // Kiểm tra đã có thanh toán chưa
     const existingPayment = await Payment.findOne({ bookingId });
     if (existingPayment) {
       return res.status(400).json({
         success: false,
-        message: "Đơn đặt phòng này đã có thanh toán",
-        payment: existingPayment
+        message: "Đơn đặt phòng này đã có thanh toán"
       });
     }
-
-    // Tạo thanh toán mới
-    console.log('🔍 createPayment - Creating payment with data:', {
-      bookingId,
-      amount,
-      method,
-      notes,
-      status: 'pending'
-    });
 
     const payment = await Payment.create({
       bookingId,
@@ -71,11 +42,7 @@ export const createPayment = asyncHandler(async (req, res) => {
       status: 'pending'
     });
 
-    console.log('✅ createPayment - Payment created successfully:', payment._id);
-
-    // Populate thông tin booking
-    await payment.populate('bookingId');
-    console.log('✅ createPayment - Payment populated with booking info');
+    await payment.populate("bookingId");
 
     res.status(201).json({
       success: true,
@@ -84,308 +51,402 @@ export const createPayment = asyncHandler(async (req, res) => {
     });
 
   } catch (error) {
-    console.error('❌ Create payment error:', error);
-    res.status(500).json({
+    res.status(500).json({ success: false, message: "Lỗi server", error: error.message });
+  }
+});
+
+
+export const createMomoPayment = asyncHandler(async (req, res) => {
+  try {
+    const { bookingId, amount } = req.body;
+    const userId = req.user.id;
+
+    if (!bookingId || !amount) {
+      return res.status(400).json({ success: false, message: "Thiếu thông tin (bookingId hoặc amount)" });
+    }
+
+    // ==== KIỂM TRA BOOKING ====
+    const booking = await Booking.findById(bookingId);
+    if (!booking) return res.status(404).json({ success: false, message: "Không tìm thấy booking" });
+    if (booking.user.toString() !== userId) {
+      return res.status(403).json({ success: false, message: "Không có quyền thực hiện thanh toán này" });
+    }
+
+    // ==== MoMo Config (theo sample MoMo) ====
+    const partnerCode = process.env.MOMO_PARTNER_CODE || "MOMO";
+    const accessKey = process.env.MOMO_ACCESS_KEY || "F8BBA842ECF85";
+    const secretKey = process.env.MOMO_SECRET_KEY || "K951B6PE1waDMi640xX08PD3vg6EkVlz";
+    const endpoint = "https://test-payment.momo.vn/v2/gateway/api/create";
+
+    const redirectUrl =
+      process.env.MOMO_RETURN_URL || "https://webhook.site/b3088a6a-2d17-4f8d-a383-71389a6c600b";
+    const ipnUrl =
+      process.env.MOMO_NOTIFY_URL || "https://webhook.site/b3088a6a-2d17-4f8d-a383-71389a6c600b";
+
+    const requestType = "payWithMethod"; // theo code mẫu của MoMo
+    const orderInfo = "Thanh toán booking qua MoMo";
+
+    const orderId = partnerCode + Date.now();
+    const requestId = orderId;
+    const extraData = "";
+    const autoCapture = true;
+    const amountStr = String(Number(amount));
+
+    // === Tạo rawSignature đúng thứ tự ===
+    const rawSignature =
+      `accessKey=${accessKey}&amount=${amountStr}&extraData=${extraData}` +
+      `&ipnUrl=${ipnUrl}&orderId=${orderId}&orderInfo=${orderInfo}` +
+      `&partnerCode=${partnerCode}&redirectUrl=${redirectUrl}` +
+      `&requestId=${requestId}&requestType=${requestType}`;
+
+    console.log("RAW SIGNATURE:", rawSignature);
+
+    const signature = crypto
+      .createHmac("sha256", secretKey)
+      .update(rawSignature)
+      .digest("hex");
+
+    console.log("SIGNATURE:", signature);
+
+    // === BODY GỬI LÊN MOMO ===
+    const requestBody = {
+      partnerCode: partnerCode,
+      partnerName: "TestStore",
+      storeId: "MomoTestStore",
+      requestId: requestId,
+      amount: amountStr,
+      orderId: orderId,
+      orderInfo: orderInfo,
+      redirectUrl: redirectUrl,
+      ipnUrl: ipnUrl,
+      lang: "vi",
+      requestType: requestType,
+      autoCapture: autoCapture,
+      extraData: extraData,
+      signature: signature,
+    };
+
+    console.log("REQUEST BODY:", requestBody);
+
+    // === GỌI MOMO ===
+    const momoRes = await axios.post(endpoint, requestBody, {
+      headers: { "Content-Type": "application/json" },
+    });
+
+    console.log("MOMO RESPONSE:", momoRes.data);
+
+    if (!momoRes.data || momoRes.data.resultCode !== 0) {
+      return res.status(400).json({
+        success: false,
+        message: "MoMo trả về lỗi",
+        momoData: momoRes.data,
+      });
+    }
+
+    // === LƯU PAYMENT PENDING (nếu cần) ===
+    await Payment.create({
+      bookingId,
+      amount: Number(amountStr),
+      method: "momo",
+      status: "pending",
+      momoOrderId: orderId,
+      momoRequestId: requestId,
+    });
+
+    // === TRẢ PAYURL VỀ FE ===
+    return res.json({
+      success: true,
+      payUrl: momoRes.data.payUrl,
+    });
+
+  } catch (error) {
+    console.error("MoMo Payment Error:", error);
+    return res.status(500).json({
       success: false,
-      message: "Lỗi server khi tạo thanh toán",
-      error: error.message
+      message: "Lỗi tạo thanh toán MoMo",
+      error: error.message,
     });
   }
 });
 
-// @desc    Lấy tất cả thanh toán (Admin)
-// @route   GET /api/payments
-// @access  Private/Admin
+export const momoIPN = async (req, res) => {
+  try {
+    console.log("🔔 ========== MoMo IPN Received ==========");
+    console.log("🔔 IPN Body:", JSON.stringify(req.body, null, 2));
+    console.log("🔔 IPN Headers:", JSON.stringify(req.headers, null, 2));
+    
+    const data = req.body;
+
+    const {
+      partnerCode,
+      orderId,
+      requestId,
+      amount,
+      orderInfo,
+      orderType,
+      transId,
+      resultCode,
+      message,
+      payType,
+      responseTime,
+      extraData,
+      signature,
+    } = data;
+
+    console.log("🔔 IPN Data extracted:", {
+      orderId,
+      resultCode,
+      message,
+      transId,
+      amount
+    });
+
+    // === VERIFY SIGNATURE ===
+    const accessKey = process.env.MOMO_ACCESS_KEY;
+    const secretKey = process.env.MOMO_SECRET_KEY;
+
+    if (!accessKey || !secretKey) {
+      console.error("❌ Missing MOMO_ACCESS_KEY or MOMO_SECRET_KEY in environment");
+      return res.status(500).json({ message: "Server configuration error" });
+    }
+
+    const rawSignature =
+      `accessKey=${accessKey}&amount=${amount}&extraData=${extraData}` +
+      `&message=${message}&orderId=${orderId}&orderInfo=${orderInfo}` +
+      `&orderType=${orderType}&partnerCode=${partnerCode}&payType=${payType}` +
+      `&requestId=${requestId}&responseTime=${responseTime}` +
+      `&resultCode=${resultCode}&transId=${transId}`;
+
+    const checkSignature = crypto
+      .createHmac("sha256", secretKey)
+      .update(rawSignature)
+      .digest("hex");
+
+    console.log("🔔 Signature check:", {
+      received: signature?.substring(0, 20) + "...",
+      calculated: checkSignature?.substring(0, 20) + "...",
+      match: signature === checkSignature
+    });
+
+    if (signature !== checkSignature) {
+      console.log("❌ Sai chữ ký MoMo → từ chối IPN");
+      console.log("❌ Expected:", checkSignature);
+      console.log("❌ Received:", signature);
+      return res.status(403).json({ message: "Invalid signature" });
+    }
+
+    // === PAYMENT FAILED ===
+    if (resultCode !== 0) {
+      console.log("⚠️ Payment failed with resultCode:", resultCode, "Message:", message);
+      return res.status(200).json({ message: "Payment failed" });
+    }
+
+    console.log("✅ Payment successful, updating database...");
+
+    // ==== UPDATE PAYMENT ====
+    const payment = await Payment.findOneAndUpdate(
+      { momoOrderId: orderId },
+      {
+        status: "paid",
+        momoTransactionId: transId,
+        momoResultCode: resultCode,
+        momoMessage: message,
+        paidAt: new Date()
+      },
+      { new: true }
+    );
+
+    if (!payment) {
+      console.log("❌ Payment not found with momoOrderId:", orderId);
+      console.log("❌ Searching for payment with orderId:", orderId);
+      const allPayments = await Payment.find({ method: "momo" }).limit(5);
+      console.log("❌ Recent MoMo payments:", allPayments.map(p => ({
+        id: p._id,
+        momoOrderId: p.momoOrderId,
+        status: p.status
+      })));
+      return res.status(404).json({ message: "Payment not found" });
+    }
+
+    console.log("✅ Payment updated:", {
+      paymentId: payment._id,
+      bookingId: payment.bookingId,
+      status: payment.status,
+      amount: payment.amount
+    });
+
+    // ==== UPDATE BOOKING STATUS ====
+    // Cập nhật status của booking thành confirmed khi thanh toán thành công
+    const booking = await Booking.findByIdAndUpdate(
+      payment.bookingId,
+      { status: "confirmed" },
+      { new: true }
+    );
+
+    if (!booking) {
+      console.log("⚠️ Booking not found:", payment.bookingId);
+    } else {
+      console.log("✅ Booking updated:", {
+        bookingId: booking._id,
+        status: booking.status
+      });
+    }
+
+    console.log("🎉 ========== IPN Processed Successfully ==========");
+    console.log("🎉 OrderId:", orderId);
+    console.log("🎉 TransactionId:", transId);
+
+    return res.status(200).json({ 
+      message: "IPN processed",
+      orderId,
+      transId
+    });
+  } catch (err) {
+    console.error("❌ ========== IPN Error ==========");
+    console.error("❌ Error:", err);
+    console.error("❌ Stack:", err.stack);
+    return res.status(500).json({ 
+      message: "IPN Error",
+      error: err.message 
+    });
+  }
+};
+
+
+
 export const getAllPayments = asyncHandler(async (req, res) => {
   try {
-    console.log('🔍 getAllPayments - Request received');
-    console.log('🔍 getAllPayments - User:', req.user);
-    console.log('🔍 getAllPayments - Query:', req.query);
-    
-    const { status, method, page = 1, limit = 10 } = req.query;
-    
-    // Build filter
+    const { status, method } = req.query;
+
     const filter = {};
     if (status) filter.status = status;
     if (method) filter.method = method;
 
-    console.log('🔍 getAllPayments - Filter:', filter);
-
-    // Pagination
-    const skip = (page - 1) * limit;
-
-    // Debug: Kiểm tra tất cả payments trước khi filter
-    const allPayments = await Payment.find({});
-    console.log('🔍 getAllPayments - All payments in DB:', allPayments.length);
-    if (allPayments.length > 0) {
-      console.log('🔍 getAllPayments - Sample payment:', allPayments[0]);
-    }
-
     const payments = await Payment.find(filter)
       .populate({
-        path: 'bookingId',
-        select: 'checkInDate checkOutDate totalPrice status',
+        path: "bookingId",
+        select: "checkInDate checkOutDate totalPrice status",
         populate: [
-          {
-            path: 'user',
-            select: 'firstName lastName email phone'
-          },
-          {
-            path: 'room',
-            select: 'name roomNumber type price'
-          }
+          { path: "user", select: "firstName lastName email phone" },
+          { path: "room", select: "name roomNumber type price" }
         ]
       })
-      .populate('cashierId', 'firstName lastName')
-      .sort({ createdAt: -1 })
-      .skip(skip)
-      .limit(parseInt(limit));
-
-    const total = await Payment.countDocuments(filter);
-
-    console.log('🔍 getAllPayments - Found payments:', payments.length);
-    console.log('🔍 getAllPayments - Total:', total);
-    console.log('🔍 getAllPayments - Payments data:', payments);
-    
-    // Debug chi tiết từng payment
-    if (payments.length > 0) {
-      payments.forEach((payment, index) => {
-        console.log(`🔍 Payment ${index + 1}:`, {
-          id: payment._id,
-          amount: payment.amount,
-          method: payment.method,
-          status: payment.status,
-          bookingId: payment.bookingId?._id,
-          user: payment.bookingId?.user,
-          room: payment.bookingId?.room
-        });
-      });
-    }
+      .populate("cashierId", "firstName lastName")
+      .sort({ createdAt: -1 });
 
     res.json({
       success: true,
-      count: payments.length,
-      total,
-      page: parseInt(page),
-      pages: Math.ceil(total / limit),
       payments
     });
 
   } catch (error) {
-    console.error('❌ Get payments error:', error);
-    res.status(500).json({
-      success: false,
-      message: "Lỗi server khi lấy danh sách thanh toán",
-      error: error.message
-    });
+    res.status(500).json({ success: false, message: "Lỗi server", error: error.message });
   }
 });
 
-// @desc    Lấy thanh toán theo ID
-// @route   GET /api/payments/:id
-// @access  Private
+
 export const getPaymentById = asyncHandler(async (req, res) => {
   try {
     const payment = await Payment.findById(req.params.id)
-      .populate('bookingId')
-      .populate('cashierId', 'firstName lastName');
+      .populate("bookingId")
+      .populate("cashierId", "firstName lastName");
 
-    if (!payment) {
-      return res.status(404).json({
-        success: false,
-        message: "Không tìm thấy thanh toán"
-      });
-    }
+    if (!payment)
+      return res.status(404).json({ success: false, message: "Không tìm thấy thanh toán" });
 
-    // Kiểm tra quyền truy cập
     const userId = req.user.id;
-    const isAdmin = req.user.role === 'admin';
-    
-    if (!isAdmin && payment.bookingId.user.toString() !== userId) {
-      return res.status(403).json({
-        success: false,
-        message: "Bạn không có quyền truy cập thanh toán này"
-      });
-    }
+    const isAdmin = req.user.role === "admin";
 
-    res.json({
-      success: true,
-      payment
-    });
+    if (!isAdmin && payment.bookingId.user.toString() !== userId)
+      return res.status(403).json({ success: false, message: "Không có quyền truy cập" });
+
+    res.json({ success: true, payment });
 
   } catch (error) {
-    console.error('❌ Get payment error:', error);
-    res.status(500).json({
-      success: false,
-      message: "Lỗi server khi lấy thông tin thanh toán",
-      error: error.message
-    });
+    res.status(500).json({ success: false, message: "Lỗi server", error: error.message });
   }
 });
 
-// @desc    Xác nhận thanh toán (Admin)
-// @route   PUT /api/payments/:id/confirm
-// @access  Private/Admin
+
 export const confirmPayment = asyncHandler(async (req, res) => {
   try {
     const { receiptNumber, notes } = req.body;
     const cashierId = req.user.id;
 
     const payment = await Payment.findById(req.params.id);
-    if (!payment) {
-      return res.status(404).json({
-        success: false,
-        message: "Không tìm thấy thanh toán"
-      });
-    }
+    if (!payment) return res.status(404).json({ success: false, message: "Không tìm thấy thanh toán" });
 
-    if (payment.status !== 'pending') {
-      return res.status(400).json({
-        success: false,
-        message: "Thanh toán đã được xử lý"
-      });
-    }
+    if (payment.status !== "pending")
+      return res.status(400).json({ success: false, message: "Thanh toán đã xử lý" });
 
-    // Cập nhật trạng thái thanh toán
     await payment.markAsPaid(cashierId, receiptNumber, notes);
 
-    // Cập nhật trạng thái booking
-    await Booking.findByIdAndUpdate(payment.bookingId, {
-      status: 'confirmed'
-    });
+    await Booking.findByIdAndUpdate(payment.bookingId, { status: "confirmed" });
 
-    // Populate thông tin
-    await payment.populate('bookingId');
-    await payment.populate('cashierId', 'firstName lastName');
+    await payment.populate("bookingId");
+    await payment.populate("cashierId", "firstName lastName");
 
-    res.json({
-      success: true,
-      message: "Xác nhận thanh toán thành công",
-      payment
-    });
+    res.json({ success: true, message: "Xác nhận thanh toán thành công", payment });
 
   } catch (error) {
-    console.error('❌ Confirm payment error:', error);
-    res.status(500).json({
-      success: false,
-      message: "Lỗi server khi xác nhận thanh toán",
-      error: error.message
-    });
+    res.status(500).json({ success: false, message: "Lỗi server", error: error.message });
   }
 });
 
-// @desc    Hủy thanh toán
-// @route   PUT /api/payments/:id/cancel
-// @access  Private
+
 export const cancelPayment = asyncHandler(async (req, res) => {
   try {
     const { reason } = req.body;
-    const userId = req.user.id;
-    const isAdmin = req.user.role === 'admin';
 
     const payment = await Payment.findById(req.params.id);
-    if (!payment) {
-      return res.status(404).json({
-        success: false,
-        message: "Không tìm thấy thanh toán"
-      });
-    }
 
-    // Kiểm tra quyền
-    if (!isAdmin && payment.bookingId.user.toString() !== userId) {
-      return res.status(403).json({
-        success: false,
-        message: "Bạn không có quyền hủy thanh toán này"
-      });
-    }
+    if (!payment) return res.status(404).json({ success: false, message: "Không tìm thấy thanh toán" });
 
-    if (payment.status !== 'pending') {
-      return res.status(400).json({
-        success: false,
-        message: "Không thể hủy thanh toán đã được xử lý"
-      });
-    }
+    if (payment.status !== "pending")
+      return res.status(400).json({ success: false, message: "Không thể hủy thanh toán" });
 
-    // Hủy thanh toán
     await payment.cancel(reason);
 
-    // Cập nhật trạng thái booking
-    await Booking.findByIdAndUpdate(payment.bookingId, {
-      status: 'cancelled'
-    });
+    await Booking.findByIdAndUpdate(payment.bookingId, { status: "cancelled" });
 
-    res.json({
-      success: true,
-      message: "Hủy thanh toán thành công",
-      payment
-    });
+    res.json({ success: true, message: "Hủy thanh toán thành công", payment });
 
   } catch (error) {
-    console.error('❌ Cancel payment error:', error);
-    res.status(500).json({
-      success: false,
-      message: "Lỗi server khi hủy thanh toán",
-      error: error.message
-    });
+    res.status(500).json({ success: false, message: "Lỗi server", error: error.message });
   }
 });
 
-// @desc    Hoàn tiền
-// @route   PUT /api/payments/:id/refund
-// @access  Private/Admin
+
 export const refundPayment = asyncHandler(async (req, res) => {
   try {
     const { amount, reason } = req.body;
 
     const payment = await Payment.findById(req.params.id);
-    if (!payment) {
-      return res.status(404).json({
-        success: false,
-        message: "Không tìm thấy thanh toán"
-      });
-    }
 
-    if (payment.status !== 'paid') {
-      return res.status(400).json({
-        success: false,
-        message: "Chỉ có thể hoàn tiền thanh toán đã thanh toán"
-      });
-    }
+    if (!payment)
+      return res.status(404).json({ success: false, message: "Không tìm thấy thanh toán" });
+
+    if (payment.status !== "paid")
+      return res.status(400).json({ success: false, message: "Chỉ hoàn tiền thanh toán đã trả" });
 
     const refundAmount = amount || payment.amount;
 
-    // Thực hiện hoàn tiền
     await payment.refund(refundAmount, reason);
 
-    // Cập nhật trạng thái booking
-    await Booking.findByIdAndUpdate(payment.bookingId, {
-      status: 'cancelled'
-    });
+    await Booking.findByIdAndUpdate(payment.bookingId, { status: "cancelled" });
 
-    res.json({
-      success: true,
-      message: "Hoàn tiền thành công",
-      payment
-    });
+    res.json({ success: true, message: "Hoàn tiền thành công", payment });
 
   } catch (error) {
-    console.error('❌ Refund payment error:', error);
-    res.status(500).json({
-      success: false,
-      message: "Lỗi server khi hoàn tiền",
-      error: error.message
-    });
+    res.status(500).json({ success: false, message: "Lỗi server", error: error.message });
   }
 });
 
-// @desc    Lấy thống kê thanh toán
-// @route   GET /api/payments/stats
-// @access  Private/Admin
+
 export const getPaymentStats = asyncHandler(async (req, res) => {
   try {
     const { startDate, endDate } = req.query;
-    
-    // Build date filter
+
     const dateFilter = {};
     if (startDate || endDate) {
       dateFilter.createdAt = {};
@@ -393,38 +454,17 @@ export const getPaymentStats = asyncHandler(async (req, res) => {
       if (endDate) dateFilter.createdAt.$lte = new Date(endDate);
     }
 
-    // Thống kê tổng quan
     const totalPayments = await Payment.countDocuments(dateFilter);
-    const paidPayments = await Payment.countDocuments({ ...dateFilter, status: 'paid' });
-    const pendingPayments = await Payment.countDocuments({ ...dateFilter, status: 'pending' });
-    const cancelledPayments = await Payment.countDocuments({ ...dateFilter, status: 'cancelled' });
+    const paidPayments = await Payment.countDocuments({ ...dateFilter, status: "paid" });
+    const pendingPayments = await Payment.countDocuments({ ...dateFilter, status: "pending" });
+    const cancelledPayments = await Payment.countDocuments({ ...dateFilter, status: "cancelled" });
 
-    // Tổng doanh thu
     const revenueResult = await Payment.aggregate([
-      { $match: { ...dateFilter, status: 'paid' } },
-      { $group: { _id: null, totalRevenue: { $sum: '$amount' } } }
-    ]);
-    const totalRevenue = revenueResult.length > 0 ? revenueResult[0].totalRevenue : 0;
-
-    // Thống kê theo phương thức thanh toán
-    const methodStats = await Payment.aggregate([
-      { $match: dateFilter },
-      { $group: { _id: '$method', count: { $sum: 1 }, total: { $sum: '$amount' } } }
+      { $match: { ...dateFilter, status: "paid" } },
+      { $group: { _id: null, totalRevenue: { $sum: "$amount" } } }
     ]);
 
-    // Thống kê theo ngày (7 ngày gần nhất)
-    const dailyStats = await Payment.aggregate([
-      { $match: { ...dateFilter, status: 'paid' } },
-      {
-        $group: {
-          _id: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt' } },
-          count: { $sum: 1 },
-          revenue: { $sum: '$amount' }
-        }
-      },
-      { $sort: { _id: -1 } },
-      { $limit: 7 }
-    ]);
+    const totalRevenue = revenueResult[0]?.totalRevenue || 0;
 
     res.json({
       success: true,
@@ -433,18 +473,11 @@ export const getPaymentStats = asyncHandler(async (req, res) => {
         paidPayments,
         pendingPayments,
         cancelledPayments,
-        totalRevenue,
-        methodStats,
-        dailyStats
+        totalRevenue
       }
     });
 
   } catch (error) {
-    console.error('❌ Get payment stats error:', error);
-    res.status(500).json({
-      success: false,
-      message: "Lỗi server khi lấy thống kê thanh toán",
-      error: error.message
-    });
+    res.status(500).json({ success: false, message: "Lỗi server", error: error.message });
   }
 });
