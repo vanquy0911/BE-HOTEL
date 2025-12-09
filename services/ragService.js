@@ -5,6 +5,19 @@ import vectorStore from './vectorStore.js';
 class RAGService {
   constructor() {
     this.initialized = false;
+    
+    // ✅ THÊM: Rate limiting
+    this.dailyQueryCount = 0;
+    this.maxQueriesPerDay = 50; // Giới hạn 50 queries/ngày cho RAG
+    this.lastResetDate = new Date().toDateString();
+    
+    // ✅ THÊM: Simple questions không cần RAG
+    this.simpleQuestions = [
+      'xin chào', 'hello', 'hi', 'chào', 'hey',
+      'cảm ơn', 'thanks', 'thank you', 'cám ơn',
+      'tạm biệt', 'bye', 'goodbye', 'see you',
+      'ok', 'okay', 'được', 'vâng', 'yes', 'no', 'không'
+    ];
   }
 
   async initialize() {
@@ -12,6 +25,35 @@ class RAGService {
       await vectorStore.initialize();
       this.initialized = true;
     }
+  }
+
+  /**
+   * ✅ THÊM: Kiểm tra xem có nên dùng RAG không
+   */
+  shouldUseRAG(query) {
+    const lowerQuery = query.toLowerCase().trim();
+    
+    // Skip RAG cho câu hỏi đơn giản
+    if (this.simpleQuestions.some(q => lowerQuery === q || lowerQuery.startsWith(q + ' '))) {
+      console.log('⏭️  Skipping RAG for simple question');
+      return false;
+    }
+    
+    // Reset daily counter nếu sang ngày mới
+    const today = new Date().toDateString();
+    if (today !== this.lastResetDate) {
+      this.dailyQueryCount = 0;
+      this.lastResetDate = today;
+      console.log('🔄 RAG daily counter reset');
+    }
+    
+    // Check rate limit
+    if (this.dailyQueryCount >= this.maxQueriesPerDay) {
+      console.warn(`⚠️  RAG daily limit reached (${this.maxQueriesPerDay}), skipping embedding`);
+      return false;
+    }
+    
+    return true;
   }
 
   /**
@@ -24,12 +66,21 @@ class RAGService {
   async retrieve(query, topK = 3, filters = {}) {
     await this.initialize();
 
+    // ✅ THÊM: Kiểm tra có nên dùng RAG không
+    if (!this.shouldUseRAG(query)) {
+      return []; // Return empty, chatbot vẫn hoạt động nhưng không có RAG
+    }
+
     try {
       // Generate query embedding
       const queryEmbedding = await embeddingService.generateEmbedding(
         query,
         'RETRIEVAL_QUERY' // Dùng RETRIEVAL_QUERY cho queries
       );
+
+      // ✅ THÊM: Tăng counter sau khi generate embedding thành công
+      this.dailyQueryCount++;
+      console.log(`📊 RAG query count: ${this.dailyQueryCount}/${this.maxQueriesPerDay}`);
 
       // Search trong vector store
       const results = await vectorStore.search(queryEmbedding, topK, filters);
@@ -96,6 +147,17 @@ class RAGService {
     return retrievedDocs.map((doc, idx) => {
       return `[${idx + 1}] Score: ${doc.score.toFixed(3)}\nSource: ${doc.metadata?.source}\nText: ${doc.text.substring(0, 100)}...`;
     }).join('\n\n');
+  }
+
+  /**
+   * ✅ THÊM: Get RAG stats
+   */
+  getStats() {
+    return {
+      dailyQueryCount: this.dailyQueryCount,
+      maxQueriesPerDay: this.maxQueriesPerDay,
+      lastResetDate: this.lastResetDate
+    };
   }
 }
 

@@ -135,6 +135,40 @@ Tài liệu này tổng hợp các “trend kịch bản” ưu tiên cho chatbo
          - Mới được tìm phòng mới từ database
          - Cập nhật `lastRoomSearchResults` với list mới
   
+  3.2. **Bước 3.2 - Khi khách muốn chọn lại phòng khác (không muốn phòng đã chọn):**
+     - **Trigger:** "không muốn phòng này nữa", "chọn lại phòng khác", "không thích phòng này", "đổi phòng", "muốn chọn phòng khác", "don't want this room", "choose another room"
+     - **⚠️⚠️⚠️ QUAN TRỌNG:** Khi khách nói muốn chọn lại phòng khác:
+       1. **Xóa phòng đã chọn:**
+          - Xóa `selectedRoom` khỏi context
+          - Xóa `bookingContext.roomId`, `bookingContext.roomName`, `bookingContext.roomPrice`
+       2. **Filter danh sách phòng:**
+          - Nếu có `lastRoomSearchResults`, filter bỏ phòng đã chọn khỏi list
+          - Cập nhật `lastRoomSearchResults` với list mới (đã bỏ phòng không muốn)
+       3. **Hiển thị lại danh sách:**
+          - **Nếu còn phòng trong list (sau khi filter):**
+            - Bot PHẢI xác nhận: "Tôi hiểu bạn muốn chọn phòng khác. Dưới đây là danh sách phòng còn lại:"
+            - Bot PHẢI hiển thị lại danh sách phòng (đã bỏ phòng không muốn) với số thứ tự đúng (1, 2, 3...)
+            - Bot PHẢI hỏi: "Bạn có muốn tôi tìm phòng khác với tiêu chí khác không, hay bạn muốn chọn từ danh sách trên?"
+            - Bot PHẢI trả về `roomsData` với danh sách phòng đã filter để frontend hiển thị room cards
+          - **Nếu không còn phòng trong list:**
+            - Bot PHẢI xác nhận: "Tôi hiểu bạn muốn chọn phòng khác."
+            - Bot PHẢI hỏi lại yêu cầu: "Bạn vui lòng cho tôi biết lại tiêu chí hoặc loại phòng bạn mong muốn để tôi tìm kiếm lại cho bạn nhé?"
+       4. **QUAN TRỌNG:**
+          - Bot KHÔNG được hiển thị lại card phòng đã chọn (đã bỏ)
+          - Bot PHẢI hiển thị danh sách phòng mới (đã filter) với số thứ tự đúng
+          - Bot PHẢI hỏi lại yêu cầu để tìm phòng mới nếu cần
+          - Số thứ tự PHẢI khớp với vị trí trong list (1, 2, 3...)
+     - **Ví dụ response:**
+       ```
+       Tôi hiểu bạn muốn chọn phòng khác. Dưới đây là danh sách phòng còn lại:
+       
+       1. Phòng Deluxe Hướng Biển - 2.500.000 VNĐ/đêm
+       2. Phòng Standard 103 - 1.500.000 VNĐ/đêm
+       3. Phòng VIP Premium - 3.500.000 VNĐ/đêm
+       
+       Bạn có muốn tôi tìm phòng khác với tiêu chí khác không, hay bạn muốn chọn từ danh sách trên?
+       ```
+  
   4. **Bước 4 - Xác nhận và hỏi thông tin còn thiếu:**
      - **⚠️⚠️⚠️ QUAN TRỌNG: Khi khách cung cấp đủ thông tin (ngày check-in/out + số người + email + phone):**
        - Bot PHẢI TỰ ĐỘNG kiểm tra phòng trống và hiển thị room cards ngay lập tức

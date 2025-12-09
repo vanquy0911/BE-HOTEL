@@ -46,7 +46,7 @@ let GoogleGenerativeAI = null;
         
         // Khởi tạo model với safety settings
         geminiModel = genAI.getGenerativeModel({ 
-          model: "gemini-2.5-flash",
+          model: "gemini-2.5-flash-lite",
           safetySettings: [
             {
               category: HarmCategory.HARM_CATEGORY_HATE_SPEECH,
@@ -796,6 +796,21 @@ const parseBookingIntent = (userMessage, context = {}) => {
     confirmBooking: false
   };
   
+  // ✅ Kiểm tra xem user có muốn chọn lại phòng khác không
+  // "không muốn phòng này nữa", "chọn lại phòng khác", "không thích phòng này", "đổi phòng"
+  const isChangingRoom = (lowerMessage.includes("không muốn") && (lowerMessage.includes("phòng này") || lowerMessage.includes("phòng đó"))) ||
+    (lowerMessage.includes("chọn lại") && (lowerMessage.includes("phòng") || lowerMessage.includes("room"))) ||
+    (lowerMessage.includes("không thích") && (lowerMessage.includes("phòng này") || lowerMessage.includes("phòng đó"))) ||
+    (lowerMessage.includes("đổi phòng") || lowerMessage.includes("change room")) ||
+    (lowerMessage.includes("muốn chọn") && lowerMessage.includes("phòng khác")) ||
+    (lowerMessage.includes("don't want") && (lowerMessage.includes("this room") || lowerMessage.includes("that room"))) ||
+    (lowerMessage.includes("choose another") && (lowerMessage.includes("room") || lowerMessage.includes("phòng")));
+  
+  if (isChangingRoom && (context.selectedRoom || context.bookingContext?.roomId)) {
+    intent.action = 'change_room'; // Action mới để xử lý đổi phòng
+    console.log('✅ Detected change room request');
+  }
+  
   // ✅ Kiểm tra xem có xác nhận đặt phòng hoặc chốt phòng không
   // "chốt phòng đó", "chốt phòng này", "đặt phòng đó", "đặt phòng này" = muốn xác nhận phòng đã chọn
   const isConfirmingSelectedRoom = lowerMessage.includes("chốt phòng") || 
@@ -804,16 +819,16 @@ const parseBookingIntent = (userMessage, context = {}) => {
     (lowerMessage.includes("phòng đó") && (lowerMessage.includes("chốt") || lowerMessage.includes("đặt"))) ||
     (lowerMessage.includes("phòng này") && (lowerMessage.includes("chốt") || lowerMessage.includes("đặt")));
   
-  if (isConfirmingSelectedRoom) {
+  if (isConfirmingSelectedRoom && !isChangingRoom) {
     // Nếu đã có selectedRoom, đây là yêu cầu xác nhận và hiển thị chi tiết phòng đã chọn
     if (context.selectedRoom || context.bookingContext?.roomId) {
       intent.action = 'confirm_room_selection'; // Action mới để phân biệt với confirm_booking
       intent.confirmBooking = false; // Chưa phải confirm booking, chỉ confirm room selection
     }
-  } else if (lowerMessage.includes("có") || lowerMessage.includes("đồng ý") || lowerMessage.includes("ok") || 
+  } else if (!isChangingRoom && (lowerMessage.includes("có") || lowerMessage.includes("đồng ý") || lowerMessage.includes("ok") || 
       lowerMessage.includes("đặt luôn") || 
       lowerMessage.includes("yes") || lowerMessage.includes("okay") ||
-      lowerMessage.includes("xác nhận") || lowerMessage.includes("confirm")) {
+      lowerMessage.includes("xác nhận") || lowerMessage.includes("confirm"))) {
     // Chỉ coi là confirm booking nếu đã có selectedRoom hoặc bookingContext.roomId
     if (context.selectedRoom || context.bookingContext?.roomId) {
       intent.action = 'confirm_booking';
@@ -871,16 +886,18 @@ const parseBookingIntent = (userMessage, context = {}) => {
   
   // Chỉ parse chọn phòng nếu KHÔNG có "người" sau số
   if (!hasNgười || forcedRoomSelection) {
-    // Ưu tiên các pattern rõ ràng về chọn phòng từ list
+    // ✅ ƯU TIÊN: Parse "phòng số X" trước khi parse "X phòng"
+    // Pattern rõ ràng về chọn phòng từ list (ưu tiên cao nhất)
     const roomSelectPatterns = [
-      /(?:chọn|đặt|muốn|book|select).*?(?:phòng|room).*?(?:số|thứ|number)\s*(\d+)/i, // "chọn phòng số 2", "đặt phòng thứ 3", "vậy tôi chọn đặc phòng số 1"
-      /phòng\s*(?:số|thứ|number)\s*(\d+)/i, // "phòng số 2", "phòng thứ 3", "phòng thứ 4"
+      /(?:chọn|đặt|muốn|book|select).*?(?:phòng|room).*?(?:số|thứ|number)\s*(\d+)/i, // "chọn phòng số 2", "đặt phòng thứ 3"
+      /phòng\s*(?:số|thứ|number)\s*(\d+)/i, // "phòng số 2", "phòng thứ 3" - ✅ QUAN TRỌNG: Pattern này phải ưu tiên
       /(?:chọn|đặt|muốn|book|select).*?(?:phòng|room).*?(\d+)(?!\s*người)/i, // "chọn phòng 2" (không có "người" sau)
       /phòng\s*(\d+)(?!\s*người)/i, // "phòng 2" (không có "người" sau) - chỉ khi có context.lastRoomSearchResults
       /số\s*(\d+)/i, // "số 2"
       /^(\d+)$/ // Chỉ có số (chỉ khi có context.lastRoomSearchResults)
     ];
     
+    let roomSelected = false;
     for (const pattern of roomSelectPatterns) {
       const match = lowerMessage.match(pattern);
       if (match) {
@@ -889,6 +906,8 @@ const parseBookingIntent = (userMessage, context = {}) => {
         if (hasRoomList && roomNum >= 1 && roomNum <= context.lastRoomSearchResults.length) {
           intent.action = 'select_room';
           intent.roomNumber = roomNum;
+          roomSelected = true;
+          console.log(`✅ Parsed room selection: "phòng số ${roomNum}" (from list of ${context.lastRoomSearchResults.length} rooms)`);
           break;
         }
         // Chỉ coi là chọn phòng nếu:
@@ -898,16 +917,38 @@ const parseBookingIntent = (userMessage, context = {}) => {
         if (roomNum >= 1 && roomNum <= 20 && hasSelectKeyword) {
           intent.action = 'select_room';
           intent.roomNumber = roomNum;
+          roomSelected = true;
           break;
         }
       }
     }
-  }
-
-  // Kiểm tra xem có số phòng không (2 phòng, 3 phòng, etc.)
-  const quantityMatch = lowerMessage.match(/(\d+)\s*(?:phòng|room)/);
-  if (quantityMatch) {
-    intent.roomQuantity = parseInt(quantityMatch[1]);
+    
+    // ✅ QUAN TRỌNG: Nếu đã parse được "phòng số X", KHÔNG parse "X phòng" nữa
+    // Tránh hiểu nhầm "phòng số 2" thành "2 phòng"
+    if (roomSelected) {
+      console.log(`✅ Room selection detected, skipping quantity parse to avoid confusion`);
+    } else {
+      // Chỉ parse "X phòng" nếu KHÔNG phải là chọn phòng từ list
+      // Kiểm tra xem có số phòng không (2 phòng, 3 phòng, etc.)
+      // ✅ QUAN TRỌNG: Chỉ parse nếu KHÔNG có pattern "phòng số X" hoặc "số X"
+      const hasRoomNumberPattern = /phòng\s*(?:số|thứ|number)\s*\d+|số\s*\d+/i.test(lowerMessage);
+      if (!hasRoomNumberPattern) {
+        const quantityMatch = lowerMessage.match(/(\d+)\s*(?:phòng|room)/);
+        if (quantityMatch) {
+          intent.roomQuantity = parseInt(quantityMatch[1]);
+          console.log(`✅ Parsed room quantity: ${intent.roomQuantity} rooms`);
+        }
+      }
+    }
+  } else {
+    // Nếu có "người" sau số, chỉ parse quantity nếu không có pattern "phòng số X"
+    const hasRoomNumberPattern = /phòng\s*(?:số|thứ|number)\s*\d+|số\s*\d+/i.test(lowerMessage);
+    if (!hasRoomNumberPattern) {
+      const quantityMatch = lowerMessage.match(/(\d+)\s*(?:phòng|room)/);
+      if (quantityMatch) {
+        intent.roomQuantity = parseInt(quantityMatch[1]);
+      }
+    }
   }
   
   // ✅ Parse số người từ user message (4 người, cho 4 người, etc.)
@@ -1115,11 +1156,17 @@ const parseBookingIntent = (userMessage, context = {}) => {
   return intent;
 };
 
-// Function để tạo booking link với query params
+// ✅ Function để tạo booking link với query params - ĐẦY ĐỦ THÔNG TIN
 const createBookingLink = (bookingData) => {
+  const baseUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
   const params = new URLSearchParams();
   
-  if (bookingData.roomId) params.append('roomId', bookingData.roomId);
+  // ✅ QUAN TRỌNG: Luôn thêm roomId
+  if (bookingData.roomId) {
+    params.append('roomId', bookingData.roomId);
+  }
+  
+  // ✅ Thêm các thông tin booking nếu có
   if (bookingData.checkInDate) {
     const checkIn = bookingData.checkInDate instanceof Date 
       ? bookingData.checkInDate.toISOString().split('T')[0]
@@ -1132,12 +1179,14 @@ const createBookingLink = (bookingData) => {
       : bookingData.checkOutDate;
     params.append('checkOut', checkOut);
   }
-  if (bookingData.roomQuantity && bookingData.roomQuantity > 1) {
+  if (bookingData.roomQuantity) {
     params.append('roomQuantity', bookingData.roomQuantity);
   }
   if (bookingData.guests) {
     params.append('guests', bookingData.guests);
   }
+  
+  // ✅ QUAN TRỌNG: Thêm thông tin khách hàng nếu có (để pre-fill form)
   if (bookingData.fullName) {
     params.append('fullName', bookingData.fullName);
   }
@@ -1151,9 +1200,17 @@ const createBookingLink = (bookingData) => {
     params.append('note', bookingData.note);
   }
 
-  // Lấy base URL từ env hoặc dùng default
+  // ✅ Return booking link với đầy đủ thông tin
+  const link = `${baseUrl}/booking?${params.toString()}`;
+  console.log('✅ Created booking link:', link);
+  return link;
+};
+
+// ✅ Helper: Tạo link xem chi tiết phòng cho room cards
+const createRoomDetailLink = (roomId) => {
   const baseUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
-  return `${baseUrl}/booking?${params.toString()}`;
+  if (!roomId) return `${baseUrl}/rooms`;
+  return `${baseUrl}/rooms/${roomId}`;
 };
 
 // ✅ Helper function để generate context data cho phòng đã chọn (đơn giản hóa - chỉ cung cấp data, không hướng dẫn cách trả lời)
@@ -1255,6 +1312,445 @@ const generateSelectedRoomPrompt = (selectedRoomInfo, bookingContext, language) 
   };
 };
 
+// ✅ THÊM: Rule-based responses cho câu hỏi đơn giản (không cần gọi API)
+const getRuleBasedResponse = (userMessage, language = 'vi') => {
+  const lowerMessage = userMessage.toLowerCase().trim();
+  
+  // Mapping câu hỏi đơn giản → response
+  const simpleResponses = {
+    vi: {
+      'xin chào': 'Xin chào! Tôi là trợ lý ảo của Rayal Park Hotel. Tôi có thể giúp gì cho bạn?',
+      'hello': 'Xin chào! Tôi là trợ lý ảo của Rayal Park Hotel. Tôi có thể giúp gì cho bạn?',
+      'hi': 'Xin chào! Tôi là trợ lý ảo của Rayal Park Hotel. Tôi có thể giúp gì cho bạn?',
+      'chào': 'Xin chào! Tôi là trợ lý ảo của Rayal Park Hotel. Tôi có thể giúp gì cho bạn?',
+      'cảm ơn': 'Không có gì! Rất vui được hỗ trợ bạn. Nếu có thắc mắc gì khác, đừng ngại hỏi nhé!',
+      'thanks': 'Không có gì! Rất vui được hỗ trợ bạn. Nếu có thắc mắc gì khác, đừng ngại hỏi nhé!',
+      'tạm biệt': 'Tạm biệt! Chúc bạn một ngày tốt lành. Hẹn gặp lại!',
+      'bye': 'Tạm biệt! Chúc bạn một ngày tốt lành. Hẹn gặp lại!',
+      'hotline': 'Hotline của chúng tôi là: 0901 234 567. Bạn có thể gọi bất cứ lúc nào!',
+      'số điện thoại': 'Hotline của chúng tôi là: 0901 234 567. Bạn có thể gọi bất cứ lúc nào!',
+      'giờ check-in': 'Giờ check-in là từ 14:00. Bạn có thể đến sớm hơn để tham quan khách sạn!',
+      'giờ check-out': 'Giờ check-out là trước 12:00. Nếu cần check-out muộn, vui lòng liên hệ lễ tân!',
+      'địa chỉ': 'Địa chỉ khách sạn: 123 Đường ABC, Quận XYZ, TP. Hồ Chí Minh. Bạn có thể tìm trên Google Maps!',
+      // ✅ THÊM: Booking-related responses
+      'đặt phòng thì sao': 'Để đặt phòng, bạn vui lòng cung cấp:\n- Ngày nhận phòng (check-in)\n- Ngày trả phòng (check-out)\n- Số lượng khách\n- Email và số điện thoại\n\nTôi sẽ tìm phòng phù hợp cho bạn! 😊',
+      'cách đặt phòng': 'Để đặt phòng, bạn vui lòng cung cấp:\n- Ngày nhận phòng (check-in)\n- Ngày trả phòng (check-out)\n- Số lượng khách\n- Email và số điện thoại\n\nTôi sẽ tìm phòng phù hợp cho bạn! 😊',
+      'muốn đặt phòng': 'Để đặt phòng, bạn vui lòng cung cấp:\n- Ngày nhận phòng (check-in)\n- Ngày trả phòng (check-out)\n- Số lượng khách\n- Email và số điện thoại\n\nTôi sẽ tìm phòng phù hợp cho bạn! 😊',
+      'làm sao để đặt phòng': 'Để đặt phòng, bạn vui lòng cung cấp:\n- Ngày nhận phòng (check-in)\n- Ngày trả phòng (check-out)\n- Số lượng khách\n- Email và số điện thoại\n\nTôi sẽ tìm phòng phù hợp cho bạn! 😊',
+      'giá phòng': 'Giá phòng của chúng tôi dao động từ 1.500.000 VNĐ đến 5.000.000 VNĐ/đêm tùy theo loại phòng. Để biết giá chính xác, vui lòng cho tôi biết:\n- Ngày nhận phòng\n- Ngày trả phòng\n- Số lượng khách\n\nTôi sẽ tìm phòng phù hợp với ngân sách của bạn! 💰',
+      'giá phòng là bao nhiêu': 'Giá phòng của chúng tôi dao động từ 1.500.000 VNĐ đến 5.000.000 VNĐ/đêm tùy theo loại phòng. Để biết giá chính xác, vui lòng cho tôi biết:\n- Ngày nhận phòng\n- Ngày trả phòng\n- Số lượng khách\n\nTôi sẽ tìm phòng phù hợp với ngân sách của bạn! 💰',
+      'có wifi không': 'Có! Khách sạn chúng tôi có WiFi miễn phí tốc độ cao trong toàn bộ khu vực. Mật khẩu sẽ được cung cấp khi bạn check-in. 📶',
+      'có bãi đỗ xe không': 'Có! Khách sạn có bãi đỗ xe miễn phí cho khách lưu trú. Bạn có thể để xe tại đây trong suốt thời gian lưu trú. 🚗',
+      'có bữa sáng không': 'Có! Khách sạn phục vụ bữa sáng buffet từ 6:00 - 10:00 sáng hàng ngày. Bữa sáng được bao gồm trong giá phòng hoặc có thể đặt thêm. 🍳',
+      'dịch vụ của khách sạn': 'Khách sạn chúng tôi cung cấp các dịch vụ:\n- WiFi miễn phí\n- Bữa sáng buffet\n- Bãi đỗ xe\n- Phòng gym\n- Hồ bơi\n- Spa & Massage\n- Dịch vụ giặt ủi\n- Room service 24/7\n\nBạn muốn biết thêm chi tiết về dịch vụ nào? 🏨',
+      // ✅ GIAI ĐOẠN 1: Thêm 20+ câu hỏi thường gặp
+      'phòng có bao nhiêu loại': 'Khách sạn chúng tôi có 4 loại phòng:\n- Phòng Đơn (1-2 người)\n- Phòng Đôi (2 người)\n- Phòng VIP (2-4 người)\n- Phòng Suite (4-6 người)\n\nBạn muốn đặt loại phòng nào?',
+      'có mấy loại phòng': 'Khách sạn chúng tôi có 4 loại phòng:\n- Phòng Đơn (1-2 người)\n- Phòng Đôi (2 người)\n- Phòng VIP (2-4 người)\n- Phòng Suite (4-6 người)\n\nBạn muốn đặt loại phòng nào?',
+      'chính sách hủy phòng': 'Chính sách hủy phòng:\n- Hủy trước 24h: Miễn phí\n- Hủy trong 24h: Phí 50%\n- Không hủy: Phí 100%\n\nVui lòng liên hệ hotline để hủy phòng: 0901 234 567',
+      'hủy phòng': 'Chính sách hủy phòng:\n- Hủy trước 24h: Miễn phí\n- Hủy trong 24h: Phí 50%\n- Không hủy: Phí 100%\n\nVui lòng liên hệ hotline để hủy phòng: 0901 234 567',
+      'có phòng gym không': 'Có! Khách sạn có phòng gym hiện đại mở cửa 24/7. Miễn phí cho khách lưu trú. 💪',
+      'có hồ bơi không': 'Có! Khách sạn có hồ bơi ngoài trời rộng rãi. Mở cửa từ 6:00 - 22:00 hàng ngày. 🏊',
+      'có spa không': 'Có! Khách sạn có spa và massage. Vui lòng đặt lịch trước qua hotline: 0901 234 567. 💆',
+      'cách thanh toán': 'Chúng tôi chấp nhận:\n- Tiền mặt\n- Thẻ tín dụng/ghi nợ\n- Chuyển khoản ngân hàng\n- VNPay\n\nThanh toán tại lễ tân khi check-in.',
+      'phương thức thanh toán': 'Chúng tôi chấp nhận:\n- Tiền mặt\n- Thẻ tín dụng/ghi nợ\n- Chuyển khoản ngân hàng\n- VNPay\n\nThanh toán tại lễ tân khi check-in.',
+      'thời gian nhận phòng': 'Giờ check-in: Từ 14:00\nGiờ check-out: Trước 12:00\n\nNếu đến sớm, bạn có thể gửi hành lý tại lễ tân.',
+      'có thể check-in sớm không': 'Có thể! Check-in sớm tùy thuộc vào tình trạng phòng. Vui lòng liên hệ trước qua hotline: 0901 234 567.',
+      'có thể check-out muộn không': 'Có thể! Check-out muộn tùy thuộc vào tình trạng phòng. Phí: 50% giá phòng/giờ. Vui lòng liên hệ lễ tân.',
+      'có shuttle bus không': 'Có! Khách sạn có dịch vụ đưa đón sân bay (có phí). Vui lòng đặt trước qua hotline: 0901 234 567. 🚌',
+      'đưa đón sân bay': 'Có! Khách sạn có dịch vụ đưa đón sân bay (có phí). Vui lòng đặt trước qua hotline: 0901 234 567. 🚌',
+      'có phòng họp không': 'Có! Khách sạn có phòng họp với sức chứa từ 20-200 người. Vui lòng đặt trước qua hotline: 0901 234 567. 📋',
+      'phòng họp': 'Có! Khách sạn có phòng họp với sức chứa từ 20-200 người. Vui lòng đặt trước qua hotline: 0901 234 567. 📋',
+      'có nhà hàng không': 'Có! Khách sạn có nhà hàng phục vụ các món Á và Âu. Mở cửa từ 6:00 - 22:00 hàng ngày. 🍽️',
+      'nhà hàng': 'Có! Khách sạn có nhà hàng phục vụ các món Á và Âu. Mở cửa từ 6:00 - 22:00 hàng ngày. 🍽️',
+      'có bar không': 'Có! Khách sạn có bar trên tầng thượng với view đẹp. Mở cửa từ 18:00 - 24:00. 🍸',
+      'bar': 'Có! Khách sạn có bar trên tầng thượng với view đẹp. Mở cửa từ 18:00 - 24:00. 🍸',
+      'có phục vụ room service không': 'Có! Khách sạn có room service 24/7. Gọi số 0901 234 567 để đặt món. 🍽️',
+      'room service': 'Có! Khách sạn có room service 24/7. Gọi số 0901 234 567 để đặt món. 🍽️',
+    },
+    en: {
+      'hello': 'Hello! I am the virtual assistant of Rayal Park Hotel. How can I help you?',
+      'hi': 'Hello! I am the virtual assistant of Rayal Park Hotel. How can I help you?',
+      'thanks': "You're welcome! Happy to help. If you have any other questions, feel free to ask!",
+      'thank you': "You're welcome! Happy to help. If you have any other questions, feel free to ask!",
+      'bye': 'Goodbye! Have a great day. See you again!',
+      'hotline': 'Our hotline is: 0901 234 567. You can call anytime!',
+      'phone number': 'Our hotline is: 0901 234 567. You can call anytime!',
+      'check-in time': 'Check-in time is from 2:00 PM. You can arrive earlier to explore the hotel!',
+      'check-out time': 'Check-out time is before 12:00 PM. If you need late check-out, please contact reception!',
+      'address': 'Hotel address: 123 ABC Street, XYZ District, Ho Chi Minh City. You can find it on Google Maps!',
+      // ✅ THÊM: Booking-related responses (English)
+      'how to book': 'To book a room, please provide:\n- Check-in date\n- Check-out date\n- Number of guests\n- Email and phone number\n\nI will find a suitable room for you! 😊',
+      'want to book': 'To book a room, please provide:\n- Check-in date\n- Check-out date\n- Number of guests\n- Email and phone number\n\nI will find a suitable room for you! 😊',
+      'room price': 'Our room prices range from 1,500,000 VND to 5,000,000 VND per night depending on room type. For exact pricing, please provide:\n- Check-in date\n- Check-out date\n- Number of guests\n\nI will find a room that fits your budget! 💰',
+      'wifi': 'Yes! Our hotel has free high-speed WiFi throughout the entire area. The password will be provided upon check-in. 📶',
+      'parking': 'Yes! The hotel has free parking for guests. You can park your car here throughout your stay. 🚗',
+      'breakfast': 'Yes! The hotel serves buffet breakfast from 6:00 AM - 10:00 AM daily. Breakfast is included in room rate or can be added. 🍳',
+      'hotel services': 'Our hotel provides:\n- Free WiFi\n- Buffet breakfast\n- Parking\n- Gym\n- Swimming pool\n- Spa & Massage\n- Laundry service\n- 24/7 Room service\n\nWhich service would you like to know more about? 🏨',
+      // ✅ GIAI ĐOẠN 1: Thêm 20+ câu hỏi thường gặp (English)
+      'room types': 'Our hotel has 4 room types:\n- Single Room (1-2 people)\n- Double Room (2 people)\n- VIP Room (2-4 people)\n- Suite (4-6 people)\n\nWhich room type would you like to book?',
+      'cancellation policy': 'Cancellation Policy:\n- Cancel 24h before: Free\n- Cancel within 24h: 50% fee\n- No show: 100% fee\n\nPlease contact hotline to cancel: 0901 234 567',
+      'gym': 'Yes! The hotel has a modern gym open 24/7. Free for hotel guests. 💪',
+      'swimming pool': 'Yes! The hotel has an outdoor swimming pool. Open from 6:00 AM - 10:00 PM daily. 🏊',
+      'spa': 'Yes! The hotel has spa and massage services. Please book in advance via hotline: 0901 234 567. 💆',
+      'payment methods': 'We accept:\n- Cash\n- Credit/Debit cards\n- Bank transfer\n- VNPay\n\nPayment at reception upon check-in.',
+      'early check-in': 'Possible! Early check-in depends on room availability. Please contact in advance via hotline: 0901 234 567.',
+      'late check-out': 'Possible! Late check-out depends on room availability. Fee: 50% of room rate per hour. Please contact reception.',
+      'airport shuttle': 'Yes! The hotel provides airport shuttle service (fee applies). Please book in advance via hotline: 0901 234 567. 🚌',
+      'meeting room': 'Yes! The hotel has meeting rooms with capacity from 20-200 people. Please book in advance via hotline: 0901 234 567. 📋',
+      'restaurant': 'Yes! The hotel has a restaurant serving Asian and European cuisine. Open from 6:00 AM - 10:00 PM daily. 🍽️',
+      'bar': 'Yes! The hotel has a rooftop bar with beautiful views. Open from 6:00 PM - 12:00 AM. 🍸',
+      'room service': 'Yes! The hotel has 24/7 room service. Call 0901 234 567 to order. 🍽️',
+    }
+  };
+  
+  const responses = simpleResponses[language] || simpleResponses.vi;
+  
+  // Tìm exact match hoặc starts with
+  for (const [key, response] of Object.entries(responses)) {
+    if (lowerMessage === key || lowerMessage.startsWith(key + ' ')) {
+      return response;
+    }
+  }
+  
+  // Tìm partial match (chứa keyword)
+  for (const [key, response] of Object.entries(responses)) {
+    if (lowerMessage.includes(key)) {
+      return response;
+    }
+  }
+  
+  return null; // Không tìm thấy, cần dùng AI
+};
+
+// ✅ THÊM: Response Cache System - Lưu và tái sử dụng AI responses
+const responseCache = new Map();
+const MAX_CACHE_SIZE = 500; // ✅ GIAI ĐOẠN 1: Tăng từ 200 → 500
+
+/**
+ * Lấy cached response nếu có
+ * @param {string} userMessage - User message
+ * @returns {object|null} - Cached response hoặc null
+ */
+const getCachedResponse = (userMessage) => {
+  const cacheKey = userMessage.toLowerCase().trim();
+  const cached = responseCache.get(cacheKey);
+  
+  if (cached) {
+    console.log('✅ Using cached response (no API call)');
+    return cached;
+  }
+  
+  return null;
+};
+
+/**
+ * Lưu response vào cache
+ * @param {string} userMessage - User message
+ * @param {object} response - AI response
+ */
+const setCachedResponse = (userMessage, response) => {
+  const cacheKey = userMessage.toLowerCase().trim();
+  
+  // Chỉ cache nếu response hợp lệ
+  if (response && response.text) {
+    responseCache.set(cacheKey, response);
+    
+    // Giới hạn cache size (FIFO - First In First Out)
+    if (responseCache.size > MAX_CACHE_SIZE) {
+      const firstKey = responseCache.keys().next().value;
+      responseCache.delete(firstKey);
+      console.log(`🗑️  Removed oldest cache entry (cache size: ${responseCache.size})`);
+    }
+    
+    console.log(`💾 Cached response (cache size: ${responseCache.size})`);
+  }
+};
+
+/**
+ * Clear cache (cho testing hoặc khi cần)
+ */
+const clearResponseCache = () => {
+  responseCache.clear();
+  console.log('🗑️  Response cache cleared');
+};
+
+/**
+ * Get cache stats
+ */
+const getCacheStats = () => {
+  return {
+    size: responseCache.size,
+    maxSize: MAX_CACHE_SIZE
+  };
+};
+
+// ✅ GIAI ĐOẠN 1: Rate Limiting per User/Session
+// Giới hạn số AI calls mỗi user/ngày để đảm bảo nhiều user có thể sử dụng
+const userRateLimit = new Map();
+
+/**
+ * Kiểm tra rate limit cho user/session (chỉ check, không tăng counter)
+ * @param {string} sessionId - Session ID hoặc user ID
+ * @returns {object} - { allowed: boolean, message?: string }
+ */
+const checkUserRateLimit = (sessionId) => {
+  if (!sessionId) {
+    // Nếu không có sessionId, cho phép (guest user)
+    return { allowed: true };
+  }
+  
+  const today = new Date().toDateString();
+  const key = `${sessionId}_${today}`;
+  
+  const userLimit = userRateLimit.get(key) || {
+    count: 0,
+    lastReset: today
+  };
+  
+  // Reset nếu sang ngày mới
+  if (userLimit.lastReset !== today) {
+    userLimit.count = 0;
+    userLimit.lastReset = today;
+  }
+  
+  // ✅ QUAN TRỌNG: Giới hạn 10 AI calls/user/ngày
+  // Rule-based và cached responses KHÔNG bị giới hạn
+  const MAX_AI_CALLS_PER_USER = 10;
+  
+  if (userLimit.count >= MAX_AI_CALLS_PER_USER) {
+    return {
+      allowed: false,
+      message: 'Bạn đã sử dụng hết lượt hỏi AI hôm nay (10 lượt). Bạn vẫn có thể hỏi các câu hỏi thường gặp hoặc liên hệ hotline: 0901 234 567 để được hỗ trợ thêm.'
+    };
+  }
+  
+  return { allowed: true };
+};
+
+/**
+ * Tăng counter cho user/session (sau khi gọi AI thành công)
+ * @param {string} sessionId - Session ID hoặc user ID
+ */
+const incrementUserRateLimit = (sessionId) => {
+  if (!sessionId) {
+    return; // Guest user không cần track
+  }
+  
+  const today = new Date().toDateString();
+  const key = `${sessionId}_${today}`;
+  
+  const userLimit = userRateLimit.get(key) || {
+    count: 0,
+    lastReset: today
+  };
+  
+  // Reset nếu sang ngày mới
+  if (userLimit.lastReset !== today) {
+    userLimit.count = 0;
+    userLimit.lastReset = today;
+  }
+  
+  userLimit.count++;
+  userRateLimit.set(key, userLimit);
+  
+  console.log(`📊 User ${sessionId} AI call count: ${userLimit.count}/10`);
+};
+
+/**
+ * Get rate limit stats cho user
+ * @param {string} sessionId - Session ID hoặc user ID
+ * @returns {object|null} - { count, maxCalls, remaining } hoặc null
+ */
+const getUserRateLimitStats = (sessionId) => {
+  if (!sessionId) return null;
+  
+  const today = new Date().toDateString();
+  const key = `${sessionId}_${today}`;
+  const userLimit = userRateLimit.get(key);
+  
+  if (!userLimit) {
+    return { count: 0, maxCalls: 10, remaining: 10 };
+  }
+  
+  return {
+    count: userLimit.count,
+    maxCalls: 10,
+    remaining: Math.max(0, 10 - userLimit.count)
+  };
+};
+
+// ✅ THÊM: Pattern-based Booking Handler - Xử lý booking flow bằng logic
+/**
+ * Xử lý các pattern booking cụ thể bằng logic (không cần AI)
+ * @param {string} userMessage - User message
+ * @param {object} context - Conversation context
+ * @returns {object|null} - Response object hoặc null nếu không match
+ */
+const getPatternBasedResponse = async (userMessage, context = {}) => {
+  const lower = userMessage.toLowerCase().trim();
+  
+  // Pattern 1: "tôi muốn đặt phòng" hoặc "đặt phòng thì sao" → Hướng dẫn
+  if (lower.includes('muốn đặt phòng') || 
+      lower.includes('đặt phòng thì sao') || 
+      lower.includes('cách đặt phòng') ||
+      lower.includes('làm sao để đặt phòng')) {
+    return {
+      text: 'Để đặt phòng, bạn vui lòng cung cấp:\n- Ngày nhận phòng (check-in)\n- Ngày trả phòng (check-out)\n- Số lượng khách\n- Email và số điện thoại\n\nTôi sẽ tìm phòng phù hợp cho bạn! 😊',
+      rooms: null,
+      hasRooms: false
+    };
+  }
+  
+  // Pattern 2: Đã có đủ thông tin booking trong context → Tự động tìm phòng từ DB
+  const bookingContext = context.bookingContext || {};
+  const hasDates = bookingContext.checkInDate && bookingContext.checkOutDate;
+  const hasGuests = bookingContext.guests || bookingContext.maxOccupancy;
+  const wantsSeaView = lower.includes('view biển') || lower.includes('biển') || lower.includes('sea view') || lower.includes('ocean view') || lower.includes('hướng biển');
+  // Lưu dấu hiệu khách muốn view biển để dùng khi họ cung cấp ngày sau đó
+  if (wantsSeaView) {
+    context.requestedView = 'biển';
+    if (context.session) {
+      context.session.requestedView = 'biển';
+    }
+  } else if (!wantsSeaView && !context.requestedView && context.session?.requestedView) {
+    context.requestedView = context.session.requestedView;
+  }
+
+  // Pattern: Khách đã cung cấp ngày và muốn phòng view biển (từ message hiện tại hoặc lưu từ trước) → tìm tất cả phòng view biển còn trống
+  if ((wantsSeaView || context.requestedView === 'biển') && hasDates) {
+    const criteria = {
+      checkInDate: bookingContext.checkInDate,
+      checkOutDate: bookingContext.checkOutDate,
+      view: 'biển', // regex i trong searchRooms
+    };
+
+    try {
+      const seaViewRooms = await searchRooms(criteria);
+      if (seaViewRooms.length > 0) {
+        // Lưu list để bước chọn phòng
+        context.lastRoomSearchResults = seaViewRooms;
+        const listText = seaViewRooms
+          .map((r, idx) => `${idx + 1}. ${r.name} - ${r.pricePerNight?.toLocaleString('vi-VN') || 'N/A'} VNĐ/đêm (Sức chứa: ${r.maxOccupancy || 'N/A'})`)
+          .join('\n');
+        const response = {
+          text: `Mình đã tìm được ${seaViewRooms.length} phòng view biển trống từ ${new Date(criteria.checkInDate).toLocaleDateString('vi-VN')} đến ${new Date(criteria.checkOutDate).toLocaleDateString('vi-VN')}:\n${listText}\n\nBạn muốn chọn phòng số mấy?`,
+          rooms: seaViewRooms.map(r => ({
+            id: r._id.toString(),
+            name: r.name,
+            roomType: r.roomType,
+            pricePerNight: r.pricePerNight,
+            maxOccupancy: r.maxOccupancy,
+            view: r.view,
+            image: r.image || r.thumbnailUrl || '',
+            amenities: Array.isArray(r.amenities) ? r.amenities : []
+          })),
+          hasRooms: true
+        };
+        // Reset requestedView after đã trả list
+        context.requestedView = null;
+        if (context.session) {
+          context.session.requestedView = null;
+        }
+        return response;
+      }
+      // Không còn phòng view biển
+      const response = {
+        text: 'Hiện tại không còn phòng view biển trong khoảng thời gian này. Bạn muốn mình tìm phòng view khác hoặc loại phòng khác không?',
+        rooms: null,
+        hasRooms: false
+      };
+      context.requestedView = null;
+      if (context.session) {
+        context.session.requestedView = null;
+      }
+      return response;
+    } catch (err) {
+      console.error('❌ Error searching sea view rooms:', err);
+      return {
+        text: 'Mình sẽ kiểm tra lại phòng view biển, vui lòng thử lại sau hoặc cho mình biết nếu muốn xem các phòng khác.',
+        rooms: null,
+        hasRooms: false
+      };
+    }
+  }
+  
+  // Nếu đã có đủ thông tin và user đang cung cấp thêm thông tin hoặc xác nhận
+  if (hasDates && hasGuests) {
+    // Nếu có yêu cầu view biển (đang hoặc lưu trước đó), ưu tiên trả list view biển trước
+    if ((wantsSeaView || context.requestedView === 'biển') && !context.lastRoomSearchResults) {
+      // giao cho nhánh sea view phía trên, không rơi vào nhánh hỏi thông tin
+      return null;
+    }
+    // Kiểm tra xem có phải là câu hỏi về booking không
+    const isBookingRelated = lower.includes('đặt phòng') || 
+                             lower.includes('book') ||
+                             lower.includes('phòng') ||
+                             lower.match(/\d{1,2}\/\d{1,2}/) || // Có ngày tháng
+                             lower.match(/\d+\s*người/); // Có số người
+    
+    if (isBookingRelated) {
+      try {
+        // Parse dates
+        const checkInDate = bookingContext.checkInDate instanceof Date 
+          ? bookingContext.checkInDate 
+          : new Date(bookingContext.checkInDate);
+        const checkOutDate = bookingContext.checkOutDate instanceof Date 
+          ? bookingContext.checkOutDate 
+          : new Date(bookingContext.checkOutDate);
+        
+        // Validate dates
+        if (!isNaN(checkInDate.getTime()) && !isNaN(checkOutDate.getTime())) {
+          // ✅ Sử dụng searchRooms function có sẵn (xử lý availability và filtering tốt hơn)
+          const searchCriteria = {
+            checkInDate: checkInDate,
+            checkOutDate: checkOutDate,
+            maxOccupancy: hasGuests,
+            isAvailable: true,
+            status: 'active'
+          };
+          
+          const rooms = await searchRooms(searchCriteria);
+          
+          if (rooms.length > 0) {
+            // Format rooms data (rooms đã được format từ searchRooms)
+            const formattedRooms = rooms.map(room => ({
+              _id: room._id,
+              name: room.name,
+              roomType: room.roomType,
+              pricePerNight: room.pricePerNight,
+              maxOccupancy: room.maxOccupancy,
+              view: room.view,
+              image: room.image || room.thumbnailUrl || null,
+              thumbnailUrl: room.thumbnailUrl || room.image || null,
+              amenities: Array.isArray(room.amenities) ? room.amenities : []
+            }));
+            
+            console.log(`✅ Pattern-based: Found ${rooms.length} rooms (no API call)`);
+            
+            return {
+              text: `Tôi đã tìm thấy ${rooms.length} phòng phù hợp với yêu cầu của bạn. Vui lòng chọn phòng bạn muốn đặt.`,
+              rooms: formattedRooms,
+              hasRooms: true
+            };
+          } else {
+            return {
+              text: 'Xin lỗi, hiện tại không có phòng trống phù hợp với yêu cầu của bạn. Vui lòng thử lại với ngày khác hoặc số lượng khách khác.',
+              rooms: null,
+              hasRooms: false
+            };
+          }
+        }
+      } catch (error) {
+        console.error('❌ Error in pattern-based room search:', error);
+        // Return null để fallback sang AI
+        return null;
+      }
+    }
+  }
+  
+  return null; // Không match pattern, cần dùng AI
+};
+
 // ✅ AI Response function với Gemini API, Room Search VÀ RAG
 const getAIResponse = async (userMessage, context = {}, conversationHistory = [], exploreContext = {}, exploreIntent = {}) => {
   // ✅ KIỂM TRA NỘI DUNG NHẠY CẢM TRƯỚC KHI XỬ LÝ
@@ -1263,6 +1759,50 @@ const getAIResponse = async (userMessage, context = {}, conversationHistory = []
   if (sanitized.isSensitive) {
     return {
       text: "Xin lỗi, tôi không thể trả lời câu hỏi này. Tôi là trợ lý ảo của khách sạn và chỉ có thể hỗ trợ các câu hỏi liên quan đến dịch vụ khách sạn như: đặt phòng, giá phòng, dịch vụ, chính sách hủy phòng. Nếu bạn có câu hỏi khác, vui lòng liên hệ trực tiếp qua hotline: 0901 234 567.",
+      rooms: null,
+      hasRooms: false
+    };
+  }
+  
+  // ✅ THÊM: Kiểm tra rule-based response trước (tiết kiệm API calls)
+  const language = context.language || 'vi';
+  const ruleBasedResponse = getRuleBasedResponse(userMessage, language);
+  
+  if (ruleBasedResponse) {
+    console.log('✅ Using rule-based response (no API call)');
+    return {
+      text: ruleBasedResponse,
+      rooms: null,
+      hasRooms: false
+    };
+  }
+  
+  // ✅ THÊM: Kiểm tra response cache (tiết kiệm API calls cho câu hỏi lặp lại)
+  const cachedResponse = getCachedResponse(userMessage);
+  if (cachedResponse) {
+    return cachedResponse;
+  }
+  
+  // ✅ THÊM: Kiểm tra pattern-based response (xử lý booking flow bằng logic)
+  const patternBasedResponse = await getPatternBasedResponse(userMessage, context);
+  if (patternBasedResponse) {
+    console.log('✅ Using pattern-based response (no API call)');
+    // Cache pattern-based response để tái sử dụng
+    setCachedResponse(userMessage, patternBasedResponse);
+    return patternBasedResponse;
+  }
+  
+  // ✅ GIAI ĐOẠN 1: Kiểm tra rate limit cho user (chỉ áp dụng cho AI calls)
+  // ✅ QUAN TRỌNG: Rate limiting chỉ áp dụng cho AI calls, KHÔNG áp dụng cho rule-based và cached
+  const sessionId = context.sessionId || context.userId || null;
+  const rateLimitCheck = checkUserRateLimit(sessionId);
+  
+  if (!rateLimitCheck.allowed) {
+    console.log(`⚠️  Rate limit reached for user ${sessionId}`);
+    // ✅ QUAN TRỌNG: Vẫn cho phép rule-based và cached, chỉ chặn AI calls
+    // Fallback: Trả về message thông báo và hướng dẫn
+    return {
+      text: rateLimitCheck.message || 'Bạn đã sử dụng hết lượt hỏi AI hôm nay. Vui lòng liên hệ hotline: 0901 234 567 để được hỗ trợ thêm.',
       rooms: null,
       hasRooms: false
     };
@@ -1321,7 +1861,25 @@ const getAIResponse = async (userMessage, context = {}, conversationHistory = []
   const bookingContext = context.bookingContext || {};
   const hasDates = bookingContext.checkInDate && bookingContext.checkOutDate;
   const hasGuests = bookingContext.guests || bookingContext.maxOccupancy;
-  const shouldAutoSearchRooms = hasDates && hasGuests && !hasSelectedRoom && !bookingContext.roomId;
+  
+  // ✅ QUAN TRỌNG: Chỉ auto-search khi:
+  // 1. Có đủ thông tin (dates + guests)
+  // 2. CHƯA có selectedRoom hoặc bookingContext.roomId (user chưa chọn phòng)
+  // 3. KHÔNG phải là user đang cung cấp thông tin cho phòng đã chọn
+  // 4. User không yêu cầu tìm phòng mới
+  const hasSelectedRoomOrRoomId = hasSelectedRoom || bookingContext.roomId || context.selectedRoom?._id;
+  const isProvidingInfoForSelectedRoom = hasSelectedRoomOrRoomId && (hasDates || hasGuests || 
+    lowerMessage.includes("ngày nhận") || lowerMessage.includes("ngày trả") || 
+    lowerMessage.includes("check-in") || lowerMessage.includes("check-out") ||
+    lowerMessage.match(/\d{1,2}\/\d{1,2}/) || lowerMessage.match(/\d+\s*người/) ||
+    lowerMessage.match(/[a-zA-Z0-9._-]+@[a-zA-Z0-9._-]+\.[a-zA-Z0-9_-]+/) || // email
+    lowerMessage.match(/(?:0|\+84)[0-9]{9,10}/)); // phone
+  
+  const shouldAutoSearchRooms = hasDates && hasGuests && 
+    !hasSelectedRoomOrRoomId && 
+    !isProvidingInfoForSelectedRoom &&
+    !isRequestingNewSearch &&
+    !isConfirmingSelectedRoom;
   
   // ✅ Auto-search rooms nếu có đủ thông tin và chưa có selectedRoom
   if (shouldAutoSearchRooms && (!roomSearchResults || roomSearchResults.length === 0)) {
@@ -1688,20 +2246,57 @@ const getAIResponse = async (userMessage, context = {}, conversationHistory = []
           
           // ✅ Nếu user đã chọn phòng (có selectedRoom), PHẢI gửi link xem chi tiết và đặt phòng
           if (context.selectedRoom && !context.showRoomDetails) {
+            const bookingContext = context.bookingContext || {};
+            const hasDates = bookingContext.checkInDate && bookingContext.checkOutDate;
+            const hasGuests = bookingContext.guests || bookingContext.maxOccupancy;
+            const hasPersonalInfo = bookingContext.fullName && bookingContext.email && bookingContext.phone;
+            
+            // ✅ Kiểm tra xem user có đang cung cấp thông tin cho phòng đã chọn không
+            const isProvidingBookingInfo = hasDates || hasGuests || hasPersonalInfo ||
+              userMessage.match(/\d{1,2}\/\d{1,2}/) || userMessage.match(/\d+\s*người/) ||
+              userMessage.match(/[a-zA-Z0-9._-]+@[a-zA-Z0-9._-]+\.[a-zA-Z0-9_-]+/) || // email
+              userMessage.match(/(?:0|\+84)[0-9]{9,10}/); // phone
+            
             const roomSelectedLabel = language === 'vi' ? 'CONTEXT: KHÁCH ĐÃ CHỌN PHÒNG' : 'CONTEXT: CUSTOMER HAS SELECTED A ROOM';
-            const roomSelectedContext = language === 'vi'
-              ? `⚠️ QUAN TRỌNG: Khách hàng đã chọn phòng: ${context.selectedRoom.name}.\n` +
-                `Bạn PHẢI xác nhận phòng đã chọn và hiển thị thông tin phòng.\n` +
-                `Bạn PHẢI tạo và trả về roomDetailLink để frontend hiển thị card phòng với button "Xem chi tiết".\n` +
-                `QUAN TRỌNG: KHÔNG hỏi thông tin cá nhân (họ tên, email, số điện thoại) trong chat.\n` +
-                `Kết thúc với: "Hãy nhấn vào card phòng bên dưới để xem chi tiết và đặt phòng. Mọi thắc mắc xin quay lại chat để tiếp tục hỏi nhé."\n` +
-                `Tham khảo chatbot-scenarios.md section 1.8 để xử lý đúng cách.`
-              : `⚠️ IMPORTANT: Customer has selected room: ${context.selectedRoom.name}.\n` +
-                `You MUST confirm the selected room and display room information.\n` +
-                `You MUST create and return roomDetailLink for frontend to display room card with "View Details" button.\n` +
-                `IMPORTANT: DO NOT ask for personal information (name, email, phone) in chat.\n` +
-                `End with: "Please click on the room card below to view details and make a booking. If you have any questions, please return to chat to continue asking."\n` +
-                `Refer to chatbot-scenarios.md section 1.8 for proper handling.`;
+            let roomSelectedContext = '';
+            
+            if (isProvidingBookingInfo) {
+              // ✅ User đang cung cấp thông tin để tiếp tục booking với phòng đã chọn
+              roomSelectedContext = language === 'vi'
+                ? `⚠️⚠️⚠️ QUAN TRỌNG: Khách hàng ĐÃ CHỌN phòng: ${context.selectedRoom.name}.\n` +
+                  `Bây giờ khách đang CUNG CẤP THÔNG TIN để tiếp tục đặt phòng (ngày, số khách, thông tin cá nhân).\n` +
+                  `Bạn PHẢI:\n` +
+                  `- Xác nhận đã nhận thông tin: "Cảm ơn bạn đã cung cấp thông tin..."\n` +
+                  `- Hỏi thông tin còn thiếu (nếu có)\n` +
+                  `- KHÔNG được tìm phòng mới hoặc hiển thị danh sách phòng khác\n` +
+                  `- KHÔNG được nói "Tôi đã tìm thấy X phòng" - đây là SAI vì khách đã chọn phòng rồi\n` +
+                  `- Nếu đã đủ thông tin, hướng dẫn tiếp tục đặt phòng hoặc tạo booking link\n` +
+                  `Tham khảo chatbot-scenarios.md section 1.1 để xử lý đúng cách.`
+                : `⚠️⚠️⚠️ IMPORTANT: Customer HAS SELECTED room: ${context.selectedRoom.name}.\n` +
+                  `Now customer is PROVIDING INFORMATION to continue booking (dates, guests, personal info).\n` +
+                  `You MUST:\n` +
+                  `- Confirm receipt of information: "Thank you for providing..."\n` +
+                  `- Ask for missing information (if any)\n` +
+                  `- MUST NOT search for new rooms or display other room lists\n` +
+                  `- MUST NOT say "I found X rooms" - this is WRONG because customer already selected a room\n` +
+                  `- If all information is complete, guide to continue booking or create booking link\n` +
+                  `Refer to chatbot-scenarios.md section 1.1 for proper handling.`;
+            } else {
+              // ✅ User vừa chọn phòng, chưa cung cấp thông tin
+              roomSelectedContext = language === 'vi'
+                ? `⚠️ QUAN TRỌNG: Khách hàng đã chọn phòng: ${context.selectedRoom.name}.\n` +
+                  `Bạn PHẢI xác nhận phòng đã chọn và hiển thị thông tin phòng.\n` +
+                  `Bạn PHẢI tạo và trả về roomDetailLink để frontend hiển thị card phòng với button "Xem chi tiết".\n` +
+                  `QUAN TRỌNG: KHÔNG hỏi thông tin cá nhân (họ tên, email, số điện thoại) trong chat.\n` +
+                  `Kết thúc với: "Hãy nhấn vào card phòng bên dưới để xem chi tiết và đặt phòng. Mọi thắc mắc xin quay lại chat để tiếp tục hỏi nhé."\n` +
+                  `Tham khảo chatbot-scenarios.md section 1.8 để xử lý đúng cách.`
+                : `⚠️ IMPORTANT: Customer has selected room: ${context.selectedRoom.name}.\n` +
+                  `You MUST confirm the selected room and display room information.\n` +
+                  `You MUST create and return roomDetailLink for frontend to display room card with "View Details" button.\n` +
+                  `IMPORTANT: DO NOT ask for personal information (name, email, phone) in chat.\n` +
+                  `End with: "Please click on the room card below to view details and make a booking. If you have any questions, please return to chat to continue asking."\n` +
+                  `Refer to chatbot-scenarios.md section 1.8 for proper handling.`;
+            }
             
             prompt += `\n\n${roomSelectedLabel}:\n${roomSelectedContext}\n\n`;
           }
@@ -1735,27 +2330,144 @@ const getAIResponse = async (userMessage, context = {}, conversationHistory = []
           prompt += `\n\n${noListLabel}:\n${noListContext}\n\n`;
         }
         
+        // ✅ Quy tắc an toàn về tình trạng phòng
+        const availabilitySafety = language === 'vi'
+          ? `⚠️⚠️⚠️ QUAN TRỌNG: KHÔNG được nói "hết phòng", "không còn phòng" nếu chưa có kết quả kiểm tra phòng trống rõ ràng từ hệ thống.\n` +
+            `Nếu không chắc chắn về tình trạng phòng, hãy đề nghị kiểm tra: "Mình sẽ kiểm tra phòng trống cho bạn, bạn cho mình biết ngày nhận/trả phòng?"\n` +
+            `Chỉ được thông báo hết phòng khi:\n` +
+            `- Đã có kết quả kiểm tra phòng trống trả về KHÔNG còn phòng\n` +
+            `- Hoặc context.roomNoLongerAvailable được set (đã kiểm tra và không còn)\n` +
+            `Nếu chỉ biết một loại phòng có thể hết, KHÔNG được nói toàn bộ khách sạn hết phòng; hãy gợi ý kiểm tra các loại phòng khác.\n`
+          : `⚠️⚠️⚠️ IMPORTANT: DO NOT say "sold out"/"no rooms available" unless there is a clear availability check result from the system.\n` +
+            `If unsure about availability, ask to check: "Let me check availability for you, please share check-in/check-out dates?"\n` +
+            `Only state sold-out when:\n` +
+            `- An availability check returned NO rooms\n` +
+            `- Or context.roomNoLongerAvailable is set (already checked and unavailable)\n` +
+            `If only one room type might be unavailable, DO NOT say the whole hotel is sold out; suggest checking other room types.\n`;
+        prompt += `\n\n${availabilitySafety}\n\n`;
+
         // ✅ Cung cấp context về phòng đã chọn (nếu có)
         if (context.selectedRoom && context.lastRoomSearchResults) {
           const selectedRoomInfo = context.selectedRoom;
-          const roomIndex = context.lastRoomSearchResults.findIndex(r => r._id.toString() === selectedRoomInfo._id) + 1;
-          const contextInfo = language === 'vi'
-            ? `Context: Khách hàng đã chọn phòng số ${roomIndex} từ danh sách đã hiển thị trước đó.\n` +
-              `Tham khảo chatbot-scenarios.md section 1.8 để xử lý đúng cách.`
-            : `Context: Customer has selected room #${roomIndex} from the previously displayed list.\n` +
-              `Refer to chatbot-scenarios.md section 1.8 for proper handling.`;
+          const roomIndex = context.lastRoomSearchResults.findIndex(r => {
+            if (!r || !r._id || !selectedRoomInfo._id) return false;
+            const rId = r._id.toString ? r._id.toString() : String(r._id);
+            const selectedId = selectedRoomInfo._id.toString ? selectedRoomInfo._id.toString() : String(selectedRoomInfo._id);
+            return rId === selectedId;
+          }) + 1;
           
-          prompt += `\n\n${contextInfo}\n\n`;
+          // ✅ QUAN TRỌNG: Đảm bảo roomIndex > 0 (tìm thấy trong list)
+          if (roomIndex > 0) {
+            const contextInfo = language === 'vi'
+              ? `⚠️⚠️⚠️ QUAN TRỌNG: Khách hàng đã chọn phòng số ${roomIndex} từ danh sách đã hiển thị trước đó.\n` +
+                `Tên phòng đã chọn: ${selectedRoomInfo.name}\n` +
+                `Bạn PHẢI xác nhận: "Bạn đã chọn phòng số ${roomIndex}: ${selectedRoomInfo.name}" hoặc tương tự.\n` +
+                `Bạn KHÔNG được nói "Tôi đã tìm thấy ${roomIndex} phòng" - đây là SAI vì khách đã chọn 1 phòng cụ thể, không phải tìm ${roomIndex} phòng.\n` +
+                `Bạn PHẢI nói về PHÒNG ĐÃ CHỌN (phòng số ${roomIndex}: ${selectedRoomInfo.name}), không phải số lượng phòng tìm được.\n` +
+                `QUAN TRỌNG: Số thứ tự ${roomIndex} PHẢI khớp với vị trí trong list (index ${roomIndex - 1} trong array).\n` +
+                `Tham khảo chatbot-scenarios.md section 1.8 để xử lý đúng cách.`
+              : `⚠️⚠️⚠️ IMPORTANT: Customer has selected room #${roomIndex} from the previously displayed list.\n` +
+                `Selected room name: ${selectedRoomInfo.name}\n` +
+                `You MUST confirm: "You have selected room #${roomIndex}: ${selectedRoomInfo.name}" or similar.\n` +
+                `You MUST NOT say "I found ${roomIndex} rooms" - this is WRONG because customer selected 1 specific room, not found ${roomIndex} rooms.\n` +
+                `You MUST talk about THE SELECTED ROOM (room #${roomIndex}: ${selectedRoomInfo.name}), not the number of rooms found.\n` +
+                `IMPORTANT: Order number ${roomIndex} MUST match position in list (index ${roomIndex - 1} in array).\n` +
+                `Refer to chatbot-scenarios.md section 1.8 for proper handling.`;
+            
+            prompt += `\n\n${contextInfo}\n\n`;
+          } else {
+            // ✅ Fallback: Nếu không tìm thấy trong list, vẫn xác nhận phòng đã chọn
+            const contextInfo = language === 'vi'
+              ? `⚠️ QUAN TRỌNG: Khách hàng đã chọn phòng: ${selectedRoomInfo.name}.\n` +
+                `Bạn PHẢI xác nhận phòng đã chọn và hiển thị thông tin phòng.\n` +
+                `Bạn KHÔNG được nói về số lượng phòng tìm được.\n` +
+                `Tham khảo chatbot-scenarios.md section 1.8 để xử lý đúng cách.`
+              : `⚠️ IMPORTANT: Customer has selected room: ${selectedRoomInfo.name}.\n` +
+                `You MUST confirm the selected room and display room information.\n` +
+                `You MUST NOT talk about the number of rooms found.\n` +
+                `Refer to chatbot-scenarios.md section 1.8 for proper handling.`;
+            
+            prompt += `\n\n${contextInfo}\n\n`;
+          }
+        }
+        
+        // ✅ Cung cấp context khi user muốn đổi phòng (chọn lại phòng khác)
+        if (context.roomChanged && context.shouldShowFilteredRoomList && context.lastRoomSearchResults && context.lastRoomSearchResults.length > 0) {
+          const changeRoomContext = language === 'vi'
+            ? `⚠️⚠️⚠️ QUAN TRỌNG: Khách hàng đã nói "không muốn phòng này nữa" hoặc "muốn chọn lại phòng khác".\n` +
+              `Bạn ĐÃ XÓA phòng đã chọn khỏi danh sách và còn lại ${context.lastRoomSearchResults.length} phòng:\n` +
+              `${context.lastRoomSearchResults.map((r, idx) => `   ${idx + 1}. ${r.name} - ${r.pricePerNight.toLocaleString('vi-VN')} VNĐ/đêm`).join('\n')}\n` +
+              `BẠN PHẢI:\n` +
+              `1. Xác nhận: "Tôi hiểu bạn muốn chọn phòng khác. Dưới đây là danh sách phòng còn lại:"\n` +
+              `2. Hiển thị lại danh sách phòng (đã bỏ phòng không muốn) với số thứ tự đúng (1, 2, 3...)\n` +
+              `3. Hỏi lại yêu cầu: "Bạn có muốn tôi tìm phòng khác với tiêu chí khác không, hay bạn muốn chọn từ danh sách trên?"\n` +
+              `QUAN TRỌNG:\n` +
+              `- KHÔNG được hiển thị lại card phòng đã chọn (đã bỏ)\n` +
+              `- PHẢI hiển thị danh sách phòng mới (đã filter)\n` +
+              `- PHẢI hỏi lại yêu cầu để tìm phòng mới nếu cần\n` +
+              `- Số thứ tự PHẢI khớp với vị trí trong list (1, 2, 3...)\n`
+            : `⚠️⚠️⚠️ IMPORTANT: Customer said "don't want this room anymore" or "want to choose another room".\n` +
+              `You HAVE REMOVED the selected room from the list and ${context.lastRoomSearchResults.length} rooms remain:\n` +
+              `${context.lastRoomSearchResults.map((r, idx) => `   ${idx + 1}. ${r.name} - ${r.pricePerNight.toLocaleString('vi-VN')} VND/night`).join('\n')}\n` +
+              `YOU MUST:\n` +
+              `1. Confirm: "I understand you want to choose another room. Here are the remaining rooms:"\n` +
+              `2. Display the room list again (with unwanted room removed) with correct order numbers (1, 2, 3...)\n` +
+              `3. Ask for new criteria: "Would you like me to search for other rooms with different criteria, or would you like to choose from the list above?"\n` +
+              `IMPORTANT:\n` +
+              `- MUST NOT display the card of the removed room\n` +
+              `- MUST display the new room list (filtered)\n` +
+              `- MUST ask for new criteria to search for new rooms if needed\n` +
+              `- Order numbers MUST match position in list (1, 2, 3...)\n`;
+          
+          prompt += `\n\n${changeRoomContext}\n\n`;
+        } else if (context.shouldAskForNewRoomCriteria) {
+          const askCriteriaContext = language === 'vi'
+            ? `⚠️⚠️⚠️ QUAN TRỌNG: Khách hàng đã nói "không muốn phòng này nữa" hoặc "muốn chọn lại phòng khác".\n` +
+              `NHƯNG: Không có danh sách phòng để hiển thị lại.\n` +
+              `BẠN PHẢI:\n` +
+              `1. Xác nhận: "Tôi hiểu bạn muốn chọn phòng khác."\n` +
+              `2. Hỏi lại yêu cầu: "Bạn vui lòng cho tôi biết lại tiêu chí hoặc loại phòng bạn mong muốn để tôi tìm kiếm lại cho bạn nhé?"\n` +
+              `QUAN TRỌNG:\n` +
+              `- KHÔNG được hiển thị lại card phòng đã chọn\n` +
+              `- PHẢI hỏi lại yêu cầu để tìm phòng mới\n`
+            : `⚠️⚠️⚠️ IMPORTANT: Customer said "don't want this room anymore" or "want to choose another room".\n` +
+              `HOWEVER: No room list available to display again.\n` +
+              `YOU MUST:\n` +
+              `1. Confirm: "I understand you want to choose another room."\n` +
+              `2. Ask for new criteria: "Could you please let me know your criteria or the type of room you want so I can search again for you?"\n` +
+              `IMPORTANT:\n` +
+              `- MUST NOT display the card of the removed room\n` +
+              `- MUST ask for new criteria to search for new rooms\n`;
+          
+          prompt += `\n\n${askCriteriaContext}\n\n`;
         }
         
         // ✅ Cung cấp context về danh sách phòng đã hiển thị (nếu có)
-        if (context.lastRoomSearchResults && context.lastRoomSearchResults.length > 0 && !context.selectedRoom) {
+        if (context.lastRoomSearchResults && context.lastRoomSearchResults.length > 0 && !context.selectedRoom && !context.roomChanged) {
           const roomListContext = language === 'vi'
-            ? `Context: Đã có danh sách ${context.lastRoomSearchResults.length} phòng đã hiển thị cho khách hàng:\n` +
+            ? `⚠️⚠️⚠️ QUAN TRỌNG: Đã có danh sách ${context.lastRoomSearchResults.length} phòng đã hiển thị cho khách hàng:\n` +
               `${context.lastRoomSearchResults.map((r, idx) => `   ${idx + 1}. ${r.name} - ${r.pricePerNight.toLocaleString('vi-VN')} VNĐ/đêm`).join('\n')}\n` +
+              `QUAN TRỌNG VỀ SỐ THỨ TỰ:\n` +
+              `- Phòng đầu tiên trong list là "phòng số 1" (index 0)\n` +
+              `- Phòng thứ hai là "phòng số 2" (index 1)\n` +
+              `- Phòng thứ ba là "phòng số 3" (index 2)\n` +
+              `- ... và cứ thế\n` +
+              `- Khi hiển thị list, bạn PHẢI đánh số đúng: "1. Phòng X", "2. Phòng Y", "3. Phòng Z"...\n` +
+              `- KHÔNG được đánh số sai hoặc nhầm lẫn (ví dụ: "5. Phòng X (Số thứ tự: 6)" là SAI)\n` +
+              `- Số thứ tự PHẢI khớp với vị trí trong list (số thứ tự = index + 1)\n` +
+              `- Khi khách nói "phòng số X", đó là phòng ở vị trí X trong list trên\n` +
               `Tham khảo chatbot-scenarios.md section 1.8 để xử lý khi khách chọn phòng từ list.`
-            : `Context: There is a displayed list of ${context.lastRoomSearchResults.length} rooms for the customer:\n` +
+            : `⚠️⚠️⚠️ IMPORTANT: There is a displayed list of ${context.lastRoomSearchResults.length} rooms for the customer:\n` +
               `${context.lastRoomSearchResults.map((r, idx) => `   ${idx + 1}. ${r.name} - ${r.pricePerNight.toLocaleString('vi-VN')} VND/night`).join('\n')}\n` +
+              `IMPORTANT ABOUT ORDER NUMBERS:\n` +
+              `- First room in list is "room number 1" (index 0)\n` +
+              `- Second room is "room number 2" (index 1)\n` +
+              `- Third room is "room number 3" (index 2)\n` +
+              `- ... and so on\n` +
+              `- When displaying list, you MUST number correctly: "1. Room X", "2. Room Y", "3. Room Z"...\n` +
+              `- MUST NOT number incorrectly or confuse (e.g., "5. Room X (Order number: 6)" is WRONG)\n` +
+              `- Order number MUST match position in list (order number = index + 1)\n` +
+              `- When customer says "room number X", that's the room at position X in the list above\n` +
               `Refer to chatbot-scenarios.md section 1.8 for handling when customer selects a room from the list.`;
           
           prompt += `\n\n${roomListContext}\n\n`;
@@ -2272,7 +2984,28 @@ const getAIResponse = async (userMessage, context = {}, conversationHistory = []
           const adults = bookingContext.adults || bookingContext.guests || 1;
           const children = bookingContext.children || [];
           
-          prompt += `\n\n${roomInfoLabel}:\n`;
+          // ✅ QUAN TRỌNG: Thêm instruction về số thứ tự
+          const roomNumberingInstruction = language === 'vi'
+            ? `\n⚠️⚠️⚠️ QUAN TRỌNG VỀ SỐ THỨ TỰ KHI HIỂN THỊ DANH SÁCH PHÒNG:\n` +
+              `- Phòng đầu tiên trong list PHẢI được đánh số "1" (không phải "0" hoặc số khác)\n` +
+              `- Phòng thứ hai PHẢI được đánh số "2"\n` +
+              `- Phòng thứ ba PHẢI được đánh số "3"\n` +
+              `- ... và cứ thế cho đến hết list\n` +
+              `- Khi hiển thị, bạn PHẢI dùng format: "1. **Tên phòng** (Số thứ tự: 1)" hoặc "1. **Tên phòng**"\n` +
+              `- KHÔNG được dùng format: "5. **Tên phòng** (Số thứ tự: 6)" - đây là SAI vì số thứ tự không khớp\n` +
+              `- Số thứ tự PHẢI = vị trí trong list (index + 1)\n` +
+              `- Khi khách nói "phòng số X", đó là phòng ở vị trí X trong list (index = X - 1)\n`
+            : `\n⚠️⚠️⚠️ IMPORTANT ABOUT ORDER NUMBERS WHEN DISPLAYING ROOM LIST:\n` +
+              `- First room in list MUST be numbered "1" (not "0" or other number)\n` +
+              `- Second room MUST be numbered "2"\n` +
+              `- Third room MUST be numbered "3"\n` +
+              `- ... and so on until the end of the list\n` +
+              `- When displaying, you MUST use format: "1. **Room Name** (Order number: 1)" or "1. **Room Name**"\n` +
+              `- MUST NOT use format: "5. **Room Name** (Order number: 6)" - this is WRONG because order number doesn't match\n` +
+              `- Order number MUST = position in list (index + 1)\n` +
+              `- When customer says "room number X", that's the room at position X in the list (index = X - 1)\n`;
+          
+          prompt += `\n\n${roomInfoLabel}:${roomNumberingInstruction}\n`;
           prompt += "=".repeat(50) + "\n";
           prompt += `${language === 'vi' ? 'QUAN TRỌNG' : 'IMPORTANT'}: ${language === 'vi' ? 'Các phòng này đã được đánh số thứ tự (1, 2, 3, 4...). Khách hàng có thể chọn phòng bằng cách nói "phòng số X" hoặc "chọn phòng số X".' : 'These rooms are numbered (1, 2, 3, 4...). Customers can select a room by saying "room number X" or "choose room number X".'}\n\n`;
           
@@ -2405,6 +3138,12 @@ const getAIResponse = async (userMessage, context = {}, conversationHistory = []
       const result = await geminiModel.generateContent(prompt);
       const response = await result.response;
       const text = response.text();
+      
+      // ✅ GIAI ĐOẠN 1: Tăng counter sau khi gọi AI thành công
+      const sessionId = context.sessionId || context.userId || null;
+      if (sessionId) {
+        incrementUserRateLimit(sessionId);
+      }
       
       // ✅ QUAN TRỌNG: Parse room types từ AI response và tìm phòng cụ thể nếu bot đề xuất phòng
       // Ví dụ: "3 phòng Đôi", "1 phòng Suite" -> tìm các phòng cụ thể từ database
@@ -2731,11 +3470,19 @@ const getAIResponse = async (userMessage, context = {}, conversationHistory = []
       }
       
       // Trả về response kèm dữ liệu phòng nếu có (với giá chi tiết)
-      return {
+      const aiResponse = {
         text: processedText,
         rooms: enrichedRooms || roomSearchResults || null,
         hasRooms: (enrichedRooms || roomSearchResults) && (enrichedRooms || roomSearchResults).length > 0
       };
+      
+      // ✅ THÊM: Cache AI response để tái sử dụng (chỉ cache nếu không có rooms hoặc rooms ít)
+      // Không cache responses có nhiều rooms vì có thể thay đổi theo thời gian
+      if (!aiResponse.hasRooms || (aiResponse.rooms && aiResponse.rooms.length <= 3)) {
+        setCachedResponse(userMessage, aiResponse);
+      }
+      
+      return aiResponse;
     } catch (error) {
       // Kiểm tra xem có phải lỗi safety không
       const errorMessage = error.message || error.toString() || '';
@@ -3173,6 +3920,89 @@ export const chatWithAI = asyncHandler(async (req, res) => {
       console.log('✅ User confirmed booking');
     }
     
+    // ✅ Xử lý khi user muốn chọn lại phòng khác (không muốn phòng này nữa)
+    if (bookingIntent.action === 'change_room') {
+      const currentSelectedRoomId = context.selectedRoom?._id?.toString() || bookingContext.roomId?.toString();
+      
+      if (currentSelectedRoomId && context.lastRoomSearchResults && context.lastRoomSearchResults.length > 0) {
+        // ✅ Filter bỏ phòng đã chọn khỏi lastRoomSearchResults
+        const filteredRooms = context.lastRoomSearchResults.filter(r => {
+          if (!r || !r._id) return true;
+          const roomIdStr = r._id.toString ? r._id.toString() : String(r._id);
+          return roomIdStr !== currentSelectedRoomId;
+        });
+        
+        // ✅ Cập nhật lastRoomSearchResults với list mới (đã bỏ phòng không muốn)
+        context.lastRoomSearchResults = filteredRooms;
+        
+        // ✅ Xóa selectedRoom khỏi context
+        context.selectedRoom = null;
+        bookingContext.roomId = null;
+        bookingContext.roomName = null;
+        bookingContext.roomPrice = null;
+        
+        // ✅ Xóa showRoomDetails và shouldNotSearchRooms để cho phép hiển thị list mới
+        context.showRoomDetails = false;
+        context.shouldNotSearchRooms = false;
+        
+        // ✅ Đánh dấu để AI biết phải hiển thị lại list phòng và hỏi yêu cầu
+        context.shouldShowFilteredRoomList = true;
+        context.roomChanged = true;
+        
+        // ✅ Tạo roomsData từ filteredRooms để hiển thị
+        if (filteredRooms.length > 0) {
+          roomsData = filteredRooms.map(room => ({
+            id: room._id.toString ? room._id.toString() : String(room._id),
+            name: room.name || 'N/A',
+            roomType: room.roomType || 'Standard',
+            pricePerNight: room.pricePerNight || 0,
+            maxOccupancy: room.maxOccupancy || 2,
+            view: room.view || 'N/A',
+            image: room.image || room.thumbnailUrl || '',
+            amenities: Array.isArray(room.amenities) ? room.amenities : []
+          }));
+          hasRooms = true;
+        }
+        
+        // ✅ Lưu vào session
+        if (session) {
+          if (!session.context) session.context = {};
+          session.context.selectedRoom = null;
+          session.context.lastRoomSearchResults = filteredRooms;
+          session.context.bookingContext = bookingContext;
+          session.context.shouldShowFilteredRoomList = true;
+          session.context.roomChanged = true;
+          await session.save();
+        }
+        
+        console.log(`✅ User wants to change room. Removed room ${currentSelectedRoomId} from list.`, {
+          originalCount: context.lastRoomSearchResults.length + 1,
+          filteredCount: filteredRooms.length,
+          hasRooms: hasRooms,
+          roomsDataLength: roomsData?.length || 0
+        });
+      } else {
+        // Nếu không có lastRoomSearchResults, xóa selectedRoom và hỏi lại yêu cầu
+        context.selectedRoom = null;
+        bookingContext.roomId = null;
+        bookingContext.roomName = null;
+        bookingContext.roomPrice = null;
+        context.showRoomDetails = false;
+        context.shouldNotSearchRooms = false;
+        context.shouldAskForNewRoomCriteria = true;
+        
+        if (session) {
+          if (!session.context) session.context = {};
+          session.context.selectedRoom = null;
+          session.context.bookingContext = bookingContext;
+          session.context.shouldAskForNewRoomCriteria = true;
+          await session.save();
+        }
+        
+        console.log(`✅ User wants to change room but no room list available. Will ask for new criteria.`);
+      }
+    }
+    
     // ✅ Xử lý khi user nói "chốt phòng đó", "chốt phòng này", "đặt phòng đó", "đặt phòng này"
     // Đây là yêu cầu xác nhận và hiển thị chi tiết phòng đã chọn, KHÔNG tìm phòng mới
     if (bookingIntent.action === 'confirm_room_selection') {
@@ -3259,7 +4089,8 @@ export const chatWithAI = asyncHandler(async (req, res) => {
             maxOccupancy: (fullSelectedRoom && fullSelectedRoom.maxOccupancy) || 2,
             view: (fullSelectedRoom && fullSelectedRoom.view) || 'N/A',
             image: (fullSelectedRoom && fullSelectedRoom.image) || (fullSelectedRoom && fullSelectedRoom.thumbnailUrl) || '', // Đảm bảo không null
-            amenities: (fullSelectedRoom && Array.isArray(fullSelectedRoom.amenities) && fullSelectedRoom.amenities) || []
+            amenities: (fullSelectedRoom && Array.isArray(fullSelectedRoom.amenities) && fullSelectedRoom.amenities) || [],
+            detailLink: createRoomDetailLink(selectedRoomId)
           };
           
           // ✅ QUAN TRỌNG: Thay thế roomsData bằng chỉ phòng đã chọn (hoặc thêm vào đầu nếu chưa có)
@@ -3336,22 +4167,38 @@ export const chatWithAI = asyncHandler(async (req, res) => {
     if (bookingIntent.action === 'select_room' && bookingIntent.roomNumber) {
       // Lấy danh sách phòng từ context hoặc tìm lại
       if (context.lastRoomSearchResults && context.lastRoomSearchResults.length > 0) {
+        // ✅ QUAN TRỌNG: Convert roomNumber sang index (roomNumber 1 = index 0, roomNumber 2 = index 1, ...)
         const selectedRoomIndex = bookingIntent.roomNumber - 1;
         
-        // ✅ QUAN TRỌNG: Log toàn bộ lastRoomSearchResults để debug thứ tự
-        console.log(`🔍 User selected room #${bookingIntent.roomNumber} (index ${selectedRoomIndex}):`, {
-          totalRooms: context.lastRoomSearchResults.length,
-          allRooms: context.lastRoomSearchResults.map((r, idx) => ({
-            number: idx + 1,
-            index: idx,
-            roomId: r._id,
-            name: r.name,
-            price: r.pricePerNight
-          }))
-        });
-        
-        if (selectedRoomIndex >= 0 && selectedRoomIndex < context.lastRoomSearchResults.length) {
+        // ✅ QUAN TRỌNG: Validate roomNumber
+        if (bookingIntent.roomNumber < 1 || bookingIntent.roomNumber > context.lastRoomSearchResults.length) {
+          console.warn(`⚠️ Invalid room number: ${bookingIntent.roomNumber} (only ${context.lastRoomSearchResults.length} rooms available)`);
+          context.invalidRoomSelection = {
+            requestedRoom: bookingIntent.roomNumber,
+            availableRooms: context.lastRoomSearchResults.length,
+            rooms: context.lastRoomSearchResults.map((r, idx) => ({
+              number: idx + 1,
+              name: r.name,
+              price: r.pricePerNight
+            }))
+          };
+        } else if (selectedRoomIndex >= 0 && selectedRoomIndex < context.lastRoomSearchResults.length) {
           const selectedRoom = context.lastRoomSearchResults[selectedRoomIndex];
+          
+          // ✅ QUAN TRỌNG: Log toàn bộ lastRoomSearchResults để debug thứ tự
+          console.log(`🔍 User selected room #${bookingIntent.roomNumber} (index ${selectedRoomIndex}):`, {
+            totalRooms: context.lastRoomSearchResults.length,
+            requestedNumber: bookingIntent.roomNumber,
+            actualIndex: selectedRoomIndex,
+            allRooms: context.lastRoomSearchResults.map((r, idx) => ({
+              number: idx + 1,
+              index: idx,
+              roomId: r._id,
+              name: r.name,
+              price: r.pricePerNight,
+              isSelected: idx === selectedRoomIndex
+            }))
+          });
           
           // ✅ Log để debug - xác nhận phòng được lấy đúng
           console.log(`✅ Selected room from lastRoomSearchResults:`, {
@@ -3361,7 +4208,11 @@ export const chatWithAI = asyncHandler(async (req, res) => {
             name: selectedRoom.name,
             price: selectedRoom.pricePerNight,
             roomType: selectedRoom.roomType,
-            matchesRequest: true
+            matchesRequest: true,
+            // ✅ Verify: So sánh với phòng trong list
+            expectedRoomName: context.lastRoomSearchResults[selectedRoomIndex]?.name,
+            actualRoomName: selectedRoom.name,
+            matches: context.lastRoomSearchResults[selectedRoomIndex]?.name === selectedRoom.name
           });
           
           // ✅ VALIDATION: Kiểm tra lại availability trước khi chọn phòng
@@ -3821,10 +4672,24 @@ export const chatWithAI = asyncHandler(async (req, res) => {
             bookingContext.needPersonalInfo = false;
             bookingContext.needLogin = false;
             
-            // Tạo link thanh toán
+            // ✅ Tạo booking link với đầy đủ thông tin để user có thể xem lại và thanh toán
             const baseUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+            bookingLink = createBookingLink({
+              roomId: bookingContext.roomId,
+              roomQuantity: bookingContext.roomQuantity || 1,
+              checkInDate: bookingContext.checkInDate,
+              checkOutDate: bookingContext.checkOutDate,
+              guests: bookingContext.guests || bookingContext.maxOccupancy,
+              fullName: bookingContext.fullName,
+              email: bookingContext.email,
+              phone: bookingContext.phone,
+              note: bookingContext.note
+            });
+            
+            // Tạo link thanh toán
             paymentLink = `${baseUrl}/payment?bookingId=${newBooking._id}`;
             console.log('✅ Booking created successfully for guest user:', newBooking._id);
+            console.log('✅ Booking link (with full info):', bookingLink);
             console.log('✅ Payment link:', paymentLink);
           }
         } catch (error) {
@@ -4324,7 +5189,8 @@ export const chatWithAI = asyncHandler(async (req, res) => {
         maxOccupancy: room.maxOccupancy,
         view: room.view || 'N/A',
         image: room.image || room.thumbnailUrl || '',
-        amenities: Array.isArray(room.amenities) ? room.amenities : []
+        amenities: Array.isArray(room.amenities) ? room.amenities : [],
+        detailLink: createRoomDetailLink(room._id)
       }));
       hasRooms = true;
       console.log(`✅ Created roomsData from roomSearchResults: ${roomsData.length} rooms`, {
@@ -4360,7 +5226,8 @@ export const chatWithAI = asyncHandler(async (req, res) => {
             maxOccupancy: matchingRoom.maxOccupancy,
             view: matchingRoom.view,
             image: matchingRoom.image,
-            amenities: matchingRoom.amenities || []
+          amenities: matchingRoom.amenities || [],
+          detailLink: createRoomDetailLink(matchingRoom._id)
           }];
           hasRooms = true;
         } else {
@@ -4377,7 +5244,8 @@ export const chatWithAI = asyncHandler(async (req, res) => {
       maxOccupancy: room.maxOccupancy,
       view: room.view,
       image: room.image,
-      amenities: room.amenities || []
+      amenities: room.amenities || [],
+      detailLink: createRoomDetailLink(room._id)
           }));
           hasRooms = true;
         }
@@ -4391,7 +5259,8 @@ export const chatWithAI = asyncHandler(async (req, res) => {
           maxOccupancy: room.maxOccupancy,
           view: room.view,
           image: room.image,
-          amenities: room.amenities || []
+          amenities: room.amenities || [],
+          detailLink: createRoomDetailLink(room._id)
         }));
         hasRooms = true;
       }
@@ -4845,7 +5714,8 @@ export const chatWithAI = asyncHandler(async (req, res) => {
     let finalRoomsData = Array.isArray(roomsData) && roomsData.length > 0 ? roomsData : null;
 
     // ✅ FINAL GUARD: Nếu đã có selectedRoom/bookingContext, chỉ hiển thị đúng phòng đó
-    if (finalRoomsData && finalRoomsData.length > 1) {
+    // ✅ QUAN TRỌNG: Bỏ qua logic này nếu user muốn đổi phòng (roomChanged = true)
+    if (finalRoomsData && finalRoomsData.length > 1 && !context.roomChanged) {
       const selectedRoomIdStr = bookingContext?.roomId
         ? (bookingContext.roomId.toString ? bookingContext.roomId.toString() : String(bookingContext.roomId))
         : (context.selectedRoom?._id ? (context.selectedRoom._id.toString ? context.selectedRoom._id.toString() : String(context.selectedRoom._id)) : null);
@@ -4868,6 +5738,12 @@ export const chatWithAI = asyncHandler(async (req, res) => {
         });
         finalRoomsData = matchingRooms;
       }
+    } else if (context.roomChanged && finalRoomsData) {
+      // ✅ Khi user đổi phòng, hiển thị tất cả phòng trong list (đã filter bỏ phòng không muốn)
+      console.log('✅ User changed room - showing all filtered rooms:', {
+        totalRooms: finalRoomsData.length,
+        rooms: finalRoomsData.map(r => r.name)
+      });
     }
     
     // ✅ Loại bỏ markdown links và các format đặc biệt khỏi response text khi đã có room cards (vì mỗi card đã có button riêng)
@@ -4907,6 +5783,23 @@ export const chatWithAI = asyncHandler(async (req, res) => {
       cleanedResponseText = cleanedResponseText.replace(/\[bookingLink:[^\]]+\]/g, '');
       cleanedResponseText = cleanedResponseText.replace(/\[paymentLink:[^\]]+\]/g, '');
       console.log('✅ Restored explore link from original text');
+    }
+    
+    // ✅ Guard: Không được nói "hết phòng" khi vẫn còn list phòng/roomsData
+    const hasAnyRoomsList = (finalRoomsData && finalRoomsData.length > 0) || (context.lastRoomSearchResults && context.lastRoomSearchResults.length > 0);
+    const availabilityNegativeRegex = /(hết phòng|không còn phòng|sold out|no rooms available)/i;
+    if (availabilityNegativeRegex.test(cleanedResponseText) && hasAnyRoomsList) {
+      console.warn('⚠️ Availability contradiction detected: negative text while rooms list exists. Rewriting response.');
+      cleanedResponseText = language === 'vi'
+        ? 'Mình sẽ kiểm tra phòng trống và gửi lại cho bạn. Hiện chưa xác nhận hết phòng, bạn cho mình biết ngày nhận/trả phòng để mình kiểm tra chính xác nhé.'
+        : 'Let me check the availability and get back to you. Not confirmed sold-out. Please share your check-in/check-out dates so I can check accurately.';
+    }
+    // ✅ Guard: Nếu không có kết quả kiểm tra rõ ràng, chuyển hướng sang hỏi ngày check-in/out thay vì khẳng định hết phòng
+    if (availabilityNegativeRegex.test(cleanedResponseText) && !context.roomNoLongerAvailable && !hasRooms) {
+      console.warn('⚠️ Availability negative without explicit check. Rewriting to ask for dates.');
+      cleanedResponseText = language === 'vi'
+        ? 'Mình cần kiểm tra tình trạng phòng. Bạn cho mình biết ngày nhận/trả phòng và số khách để mình kiểm tra chính xác nhé.'
+        : 'I need to check availability. Please share your check-in/check-out dates and number of guests so I can verify accurately.';
     }
     if (finalRoomsData && finalRoomsData.length > 0) {
       console.log('✅ Removed markdown links and special formats from response text (room cards already have buttons)');

@@ -10,6 +10,10 @@ class EmbeddingService {
     this.genAI = null;
     this.embeddingModel = null;
     this.initialized = false;
+    
+    // ✅ THÊM: Cache cho query embeddings
+    this.queryCache = new Map(); // Cache query embeddings
+    this.maxCacheSize = 100; // Giới hạn cache size
 
     if (this.apiKey) {
       this.genAI = new GoogleGenerativeAI(this.apiKey);
@@ -34,13 +38,41 @@ class EmbeddingService {
       throw new Error('Embedding service not initialized. Check GEMINI_API_KEY.');
     }
 
+    // ✅ THÊM: Cache cho queries (không cache documents)
+    if (taskType === 'RETRIEVAL_QUERY') {
+      const cacheKey = text.toLowerCase().trim();
+      
+      // Kiểm tra cache
+      if (this.queryCache.has(cacheKey)) {
+        console.log('✅ Using cached query embedding');
+        return this.queryCache.get(cacheKey);
+      }
+    }
+
     try {
       const result = await this.embeddingModel.embedContent({
         content: { parts: [{ text }] },
         taskType: taskType,
       });
 
-      return result.embedding.values;
+      const embedding = result.embedding.values;
+
+      // ✅ THÊM: Cache query embedding
+      if (taskType === 'RETRIEVAL_QUERY') {
+        const cacheKey = text.toLowerCase().trim();
+        this.queryCache.set(cacheKey, embedding);
+        
+        // Giới hạn cache size (FIFO - First In First Out)
+        if (this.queryCache.size > this.maxCacheSize) {
+          const firstKey = this.queryCache.keys().next().value;
+          this.queryCache.delete(firstKey);
+          console.log(`🗑️  Removed oldest cache entry (cache size: ${this.queryCache.size})`);
+        }
+        
+        console.log(`💾 Cached query embedding (cache size: ${this.queryCache.size})`);
+      }
+
+      return embedding;
     } catch (error) {
       console.error('❌ Error generating Gemini embedding:', error);
       throw error;
@@ -97,6 +129,24 @@ class EmbeddingService {
     }
 
     return dotProduct / (Math.sqrt(norm1) * Math.sqrt(norm2));
+  }
+
+  /**
+   * ✅ THÊM: Clear cache (cho testing hoặc khi cần)
+   */
+  clearCache() {
+    this.queryCache.clear();
+    console.log('🗑️  Query embedding cache cleared');
+  }
+
+  /**
+   * ✅ THÊM: Get cache stats
+   */
+  getCacheStats() {
+    return {
+      size: this.queryCache.size,
+      maxSize: this.maxCacheSize
+    };
   }
 }
 
