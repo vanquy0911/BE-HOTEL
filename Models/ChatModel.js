@@ -78,7 +78,6 @@ const ChatSessionSchema = new mongoose.Schema({
 });
 
 // Indexes for better performance
-ChatSessionSchema.index({ sessionId: 1 });
 ChatSessionSchema.index({ userId: 1 });
 ChatSessionSchema.index({ createdAt: -1 });
 ChatSessionSchema.index({ chatType: 1, status: 1 }); // For admin queries

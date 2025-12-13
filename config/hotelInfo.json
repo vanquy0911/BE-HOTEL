@@ -1,0 +1,88 @@
+
+{
+  "contact": {
+    "hotline": "0901 234 567",
+    "email": "info@rayalpark.com",
+    "zalo": "",
+    "address": "123 Đường ABC, Quận 1, TP.HCM, Việt Nam",
+    "mapUrl": "https://maps.google.com/?q=10.7769,106.7009",
+    "socialMedia": {
+      "facebook": "https://facebook.com/rayalparkhotel",
+      "instagram": "",
+      "tiktok": "",
+      "youtube": ""
+    }
+  },
+  "payment": {
+    "methods": ["Tiền mặt", "Thẻ tín dụng (Visa/Master/JCB)", "Chuyển khoản", "Momo QR"],
+    "notes": "Có xuất hóa đơn VAT theo yêu cầu",
+    "surcharge": "Phụ thu 3% cho thẻ quốc tế"
+  },
+  "policies": {
+    "children": "Miễn phí <6 tuổi ngủ chung; 6-11 phụ thu 200.000đ/bé/đêm; từ 12 tuổi tính như người lớn",
+    "pet": "Hiện chưa nhận thú cưng",
+    "cancel": {
+      "retail": "Miễn phí trước 3 ngày; sau đó phạt 1 đêm",
+      "group": "≥5 phòng: miễn phí trước 7 ngày; sau đó phạt 50% tổng tiền phòng"
+    },
+    "earlyLate": "Early check-in từ 10:00 phụ thu 30%; late check-out đến 14:00 phụ thu 30%, đến 18:00 50%, sau 18:00 tính 1 đêm",
+    "smoking": "Phòng không hút thuốc; hút trong phòng phụ thu vệ sinh 2.000.000đ",
+    "deposit": "Đặt cọc 1 đêm cho giai đoạn cao điểm/lễ",
+    "noShow": "No-show phạt 1 đêm tiền phòng"
+  },
+  "services": {
+    "airportPickup": { "enabled": true, "priceRange": "Từ 200.000đ/chiều (4/7 chỗ)", "notes": "Đặt trước 24h" },
+    "laundry": { "enabled": true, "priceRange": "Từ 50.000đ/kg", "notes": "Giặt thường/giặt khô" },
+    "spa": { "enabled": true, "hours": "09:00-22:00", "priceRange": "Từ 500.000đ/suất", "notes": "Đặt trước 2h" },
+    "gym": { "enabled": true, "hours": "06:00-23:00", "notes": "Miễn phí cho khách lưu trú" },
+    "meetingRoom": { "enabled": true, "priceRange": "1.000.000đ/giờ", "notes": "20-50 khách, máy chiếu/wifi" },
+    "restaurant": { "enabled": true, "hours": "06:00-10:00", "priceRange": "Buffet sáng 200.000đ", "notes": "Buffet sáng 06:00-10:00" },
+    "tour": { "enabled": true, "priceRange": "Hỗ trợ đặt tour", "notes": "Đặt trước 24h" },
+    "carRental": { "enabled": true, "priceRange": "Xe máy 150.000đ/ngày", "notes": "Đặt trước 12h" },
+    "roomService": { "enabled": true, "hours": "24/7", "notes": "Menu đêm từ 22:00-06:00" },
+    "valet": { "enabled": false, "notes": "Chưa triển khai valet, bãi xe tự đỗ" },
+    "concierge": { "enabled": true, "hours": "24/7", "notes": "Hỗ trợ đặt xe/nhà hàng/tour" },
+    "currencyExchange": { "enabled": true, "notes": "Hỗ trợ USD/EUR hạn mức nhỏ, cần CMND/Passport" },
+    "wakeup": { "enabled": true, "hours": "24/7", "notes": "Đặt qua lễ tân hoặc điện thoại phòng" },
+    "businessCenter": { "enabled": false, "notes": "Đang cập nhật" },
+    "event": { "enabled": false, "notes": "Đang cập nhật" },
+    "parking": { "enabled": true, "notes": "Bãi xe miễn phí cho khách lưu trú" }
+  },
+  "roomsFallbackPrice": {
+    "deluxe": "Đang cập nhật",
+    "suite": "3.500.000đ/đêm (min theo DB)",
+    "family": "Đang cập nhật",
+    "vip": "2.500.000đ/đêm (min theo DB)",
+    "doi": "1.500.000đ/đêm (min theo DB)",
+    "don": "800.000đ/đêm (min theo DB)"
+  },
+  "promotions": [],
+  "postBookingPromo": {
+    "enabled": true,
+    "minRooms": 2,
+    "code": "THANKS2ROOMS",
+    "validityMonths": 3,
+    "description": "Tặng mã cho lần lưu trú tiếp theo khi đặt từ 2 phòng, hạn 3 tháng."
+  },
+  "events": {
+    "meeting": { "enabled": true, "capacity": "20-50 khách", "notes": "Máy chiếu, wifi; 1.000.000đ/giờ" },
+    "banquet": { "enabled": false, "notes": "Đang cập nhật" }
+  },
+  "about": {
+    "founded": "2015",
+    "history": "Thành lập 2015 tại Quận 1, nâng cấp tiêu chuẩn 5 sao năm 2023",
+    "owner": "Công ty TNHH Rayal Park",
+    "staffCount": "180",
+    "languages": ["Tiếng Việt", "English"],
+    "awards": ["Top 10 City Hotel 2024"]
+  },
+  "localInfo": {
+    "breakfast": "Buffet sáng 06:00-10:00",
+    "dressCode": "",
+    "notes": ""
+  },
+  "disclaimers": {
+    "updating": "Thông tin đang cập nhật, vui lòng liên hệ hotline để xác nhận."
+  }
+}
+

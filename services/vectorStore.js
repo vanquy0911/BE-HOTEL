@@ -39,8 +39,8 @@ class VectorStoreService {
         metadata: {
           source: doc.metadata?.source || doc.source || 'unknown',
           type: doc.metadata?.type || 'general',
-          chunkIndex: doc.metadata?.chunkIndex || 0,
-          createdAt: doc.metadata?.createdAt || new Date()
+          chunkIndex: Number.isFinite(doc.metadata?.chunkIndex) ? doc.metadata.chunkIndex : 0,
+          createdAt: doc.metadata?.createdAt ? new Date(doc.metadata.createdAt) : new Date()
         }
       }));
 

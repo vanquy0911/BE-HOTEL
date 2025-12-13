@@ -22,9 +22,9 @@ const vectorStoreSchema = new mongoose.Schema({
     required: true
   },
   metadata: {
-    source: String,        // File name
-    type: String,         // 'faq', 'policy', 'service', etc.
-    chunkIndex: Number,
+    source: { type: String },       // File name
+    type: { type: String },         // 'faq', 'policy', 'service', etc.
+    chunkIndex: { type: Number },
     createdAt: {
       type: Date,
       default: Date.now
@@ -34,8 +34,7 @@ const vectorStoreSchema = new mongoose.Schema({
   timestamps: true
 });
 
-// Index cho embedding search (MongoDB Atlas có vector search, nhưng local thì dùng cosine similarity)
-vectorStoreSchema.index({ documentId: 1 });
+// Indexes
 vectorStoreSchema.index({ 'metadata.type': 1 });
 vectorStoreSchema.index({ createdAt: -1 });
 

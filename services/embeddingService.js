@@ -15,13 +15,16 @@ class EmbeddingService {
     this.queryCache = new Map(); // Cache query embeddings
     this.maxCacheSize = 100; // Giới hạn cache size
 
+    // Prefer newer embedding model for better retrieval quality
+    const embedModel = (process.env.GEMINI_EMBED_MODEL || 'text-embedding-004').trim();
+
     if (this.apiKey) {
       this.genAI = new GoogleGenerativeAI(this.apiKey);
       this.embeddingModel = this.genAI.getGenerativeModel({ 
-        model: 'gemini-embedding-001'
+        model: embedModel
       });
       this.initialized = true;
-      console.log('✅ Gemini Embedding Service initialized');
+      console.log(`✅ Gemini Embedding Service initialized (model: ${embedModel})`);
     } else {
       console.warn('⚠️  GEMINI_API_KEY not found, embedding service unavailable');
     }
