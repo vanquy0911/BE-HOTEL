@@ -869,6 +869,7 @@ const parseBookingIntent = (userMessage, context = {}) => {
       /phòng\s*(?:số|thứ|number)\s*(\d+)/i, // "phòng số 2", "phòng thứ 3" - ✅ QUAN TRỌNG: Pattern này phải ưu tiên
       /(?:chọn|đặt|muốn|book|select).*?(?:phòng|room).*?(\d+)(?!\s*người)/i, // "chọn phòng 2" (không có "người" sau)
       /phòng\s*(\d+)(?!\s*người)/i, // "phòng 2" (không có "người" sau) - chỉ khi có context.lastRoomSearchResults
+      /(?:chọn|đặt|muốn|book|select)\s*(\d+)(?!\s*người)/i, // "chọn 2", "đặt 2" - ✅ THÊM: Pattern cho "đổi phòng khác chọn 2"
       /số\s*(\d+)/i, // "số 2"
       /^(\d+)$/ // Chỉ có số (chỉ khi có context.lastRoomSearchResults)
     ];
@@ -885,6 +886,17 @@ const parseBookingIntent = (userMessage, context = {}) => {
           intent.roomNumber = roomNum;
           roomSelected = true;
           console.log(`✅ Parsed room selection: "phòng số ${roomNum}" (from list of ${context.lastRoomSearchResults.length} rooms) - Overriding change_room`);
+          break;
+        }
+        // ✅ QUAN TRỌNG: Nếu có từ "chọn" rõ ràng + số hợp lệ, luôn override change_room thành select_room
+        // (ngay cả khi list phòng count = 0, vì user vẫn muốn chọn phòng số X)
+        const hasExplicitSelectKeyword = /(?:chọn|đặt|muốn|book|select)\s*(\d+)/i.test(lowerMessage) || 
+                                         /(?:chọn|đặt|muốn|book|select).*?(?:phòng|room).*?(\d+)/i.test(lowerMessage);
+        if (hasExplicitSelectKeyword && roomNum >= 1 && roomNum <= 20) {
+          intent.action = 'select_room'; // ✅ Override change_room ngay cả khi không có list phòng
+          intent.roomNumber = roomNum;
+          roomSelected = true;
+          console.log(`✅ Parsed explicit room selection: "chọn ${roomNum}" - Overriding change_room (list count: ${context.lastRoomSearchResults?.length || 0})`);
           break;
         }
         // Chỉ coi là chọn phòng nếu:
@@ -2218,12 +2230,12 @@ const getPatternBasedResponse = async (userMessage, context = {}) => {
           const checkOutStr = checkOutDate.toLocaleDateString('vi-VN');
           const nights = Math.ceil((checkOutDate - checkInDate) / (1000 * 60 * 60 * 24));
           
-          let responseText = `Tôi đã tìm thấy ${rooms.length} phòng phù hợp cho bạn:\n\n`;
+          let responseText = `Mình đã tìm được ${rooms.length} phòng phù hợp cho bạn rồi! 😊\n\n`;
           responseText += `📅 **Thông tin đặt phòng:**\n`;
-          responseText += `- Check-in: ${checkInStr}\n`;
-          responseText += `- Check-out: ${checkOutStr}\n`;
-          responseText += `- Số đêm: ${nights} đêm\n`;
-          responseText += `- Số khách: ${guests} người\n\n`;
+          responseText += `• Check-in: ${checkInStr}\n`;
+          responseText += `• Check-out: ${checkOutStr}\n`;
+          responseText += `• Số đêm: ${nights} đêm\n`;
+          responseText += `• Số khách: ${guests} người\n\n`;
           responseText += `Dưới đây là danh sách phòng:\n\n`;
           
           // Format rooms list
@@ -2239,7 +2251,7 @@ const getPatternBasedResponse = async (userMessage, context = {}) => {
             responseText += `\n`;
           });
           
-          responseText += `Bạn muốn chọn phòng nào? Vui lòng cho biết số thứ tự (ví dụ: "phòng số 1" hoặc "1") 🏨`;
+          responseText += `Bạn muốn xem chi tiết phòng nào trước? Gõ số thứ tự (1, 2, 3...) hoặc tên phòng, mình sẽ hỗ trợ ngay. 🏨`;
           
           return {
             text: responseText,
@@ -2270,13 +2282,17 @@ const getPatternBasedResponse = async (userMessage, context = {}) => {
   }
 
   // 🔄 Fallback pattern: "ngày nhận X đến Y ... người lớn ... trẻ em/bé" (thiếu từ "cho")
-  const dateWithFamilyPattern = lower.match(/(?:nhận|check[-\s]?in)?\s*(\d{1,2}\/\d{1,2}(?:\/\d{4})?).*?(?:đến|-|tới)\s*(\d{1,2}\/\d{1,2}(?:\/\d{4})?).*?(?:\b(\d+)\s*(?:người lớn|adult|người))?.*?(?:\b(\d+)\s*(?:trẻ em|bé|child))/i);
+  const dateWithFamilyPattern = lower.match(/(?:nhận|check[-\s]?in)?\s*(\d{1,2}\/\d{1,2}(?:\/\d{4})?).*?(?:đến|-|tới)\s*(\d{1,2}\/\d{1,2}(?:\/\d{4})?)/i);
   if (dateWithFamilyPattern) {
     const checkInDate = parseDateFromText(dateWithFamilyPattern[1]);
     const checkOutDate = parseDateFromText(dateWithFamilyPattern[2]);
-    const adults = dateWithFamilyPattern[3] ? parseInt(dateWithFamilyPattern[3]) : 0;
-    const kids = dateWithFamilyPattern[4] ? parseInt(dateWithFamilyPattern[4]) : 0;
-    const guests = (adults || 0) + (kids || 0);
+
+    // Parse số người lớn / trẻ em từ toàn bộ câu (độc lập với regex ngày)
+    const adultsMatch = lower.match(/(\d+)\s*(?:người lớn|adults?)/i);
+    const kidsMatch = lower.match(/(\d+)\s*(?:trẻ em|bé|children?)/i);
+    const adults = adultsMatch ? parseInt(adultsMatch[1]) : 0;
+    const kids = kidsMatch ? parseInt(kidsMatch[1]) : 0;
+    const guests = adults + kids || adults || kids;
 
     console.log('🔍 Fallback family booking parse:', { checkInRaw: dateWithFamilyPattern[1], checkOutRaw: dateWithFamilyPattern[2], adults, kids, guests });
 
@@ -2310,12 +2326,12 @@ const getPatternBasedResponse = async (userMessage, context = {}) => {
           const checkOutStr = checkOutDate.toLocaleDateString('vi-VN');
           const nights = Math.ceil((checkOutDate - checkInDate) / (1000 * 60 * 60 * 24));
 
-          let responseText = `Tôi đã tìm thấy ${rooms.length} phòng phù hợp cho ${adults || guests} người lớn${kids ? ` và ${kids} trẻ em` : ''}:\n\n`;
+          let responseText = `Mình đã tìm được ${rooms.length} phòng phù hợp cho ${adults || guests} người lớn${kids ? ` và ${kids} trẻ em` : ''}! 😊\n\n`;
           responseText += `📅 **Thông tin đặt phòng:**\n`;
-          responseText += `- Check-in: ${checkInStr}\n`;
-          responseText += `- Check-out: ${checkOutStr}\n`;
-          responseText += `- Số đêm: ${nights} đêm\n`;
-          responseText += `- Số khách: ${guests} người${kids ? ` (gồm ${kids} trẻ em)` : ''}\n\n`;
+          responseText += `• Check-in: ${checkInStr}\n`;
+          responseText += `• Check-out: ${checkOutStr}\n`;
+          responseText += `• Số đêm: ${nights} đêm\n`;
+          responseText += `• Số khách: ${guests} người${kids ? ` (gồm ${kids} trẻ em)` : ''}\n\n`;
           responseText += `Dưới đây là danh sách phòng:\n\n`;
 
           rooms.forEach((room, index) => {
@@ -2330,7 +2346,7 @@ const getPatternBasedResponse = async (userMessage, context = {}) => {
             responseText += `\n`;
           });
 
-          responseText += `Bạn muốn chọn phòng nào? Vui lòng cho biết số thứ tự (ví dụ: "phòng số 1" hoặc "1"). 🏨`;
+          responseText += `Bạn muốn xem chi tiết phòng nào trước? Gõ số thứ tự (1, 2, 3...) hoặc tên phòng, mình sẽ hỗ trợ ngay. 🏨`;
 
           return {
             text: responseText,
@@ -2407,6 +2423,32 @@ const getPatternBasedResponse = async (userMessage, context = {}) => {
     if (matchKeywords(["gia đình", "family", "trẻ em", "trẻ nhỏ", "kid", "children"]) && matchKeywords(["phòng", "room"])) {
       const childrenPolicy = getPolicy(hotelInfo, "children");
       const policyText = childrenPolicy ? `\n\nChính sách trẻ em: ${childrenPolicy}` : "";
+      const hasBookingContextDates =
+        context.bookingContext &&
+        context.bookingContext.checkInDate &&
+        context.bookingContext.checkOutDate;
+      const hasRoomList = context.lastRoomSearchResults && context.lastRoomSearchResults.length > 0;
+
+      if (hasBookingContextDates && hasRoomList) {
+        const bc = context.bookingContext;
+        const checkInStr = new Date(bc.checkInDate).toLocaleDateString('vi-VN');
+        const checkOutStr = new Date(bc.checkOutDate).toLocaleDateString('vi-VN');
+        const guests = bc.guests || bc.maxOccupancy || '';
+
+        return {
+          text:
+            `Bạn đang xem danh sách phòng cho khoảng thời gian ${checkInStr} - ${checkOutStr}` +
+            (guests ? ` cho khoảng ${guests} khách.` : '.') +
+            `\n\nGợi ý phòng gia đình:\n` +
+            "- Ưu tiên các phòng có sức chứa lớn hơn số khách hoặc hỗ trợ giường phụ.\n" +
+            "- Nếu bạn thích một phòng cụ thể, hãy gõ số thứ tự (1, 2, 3, ...) để mình hỗ trợ tiếp.\n" +
+            policyText,
+          rooms: null,
+          hasRooms: false
+        };
+      }
+
+      // Chưa có ngày → chỉ tư vấn chung và xin thêm thông tin
       return {
         text:
           "Gợi ý phòng gia đình:\n" +
@@ -2436,6 +2478,28 @@ const getPatternBasedResponse = async (userMessage, context = {}) => {
 
     // Giường phụ
     if (matchKeywords(["giường phụ", "extra bed", "thêm giường"])) {
+      const hasBookingContextDates =
+        context.bookingContext &&
+        context.bookingContext.checkInDate &&
+        context.bookingContext.checkOutDate;
+      const hasRoomList = context.lastRoomSearchResults && context.lastRoomSearchResults.length > 0;
+
+      if (hasBookingContextDates && hasRoomList) {
+        const bc = context.bookingContext;
+        const checkInStr = new Date(bc.checkInDate).toLocaleDateString('vi-VN');
+        const checkOutStr = new Date(bc.checkOutDate).toLocaleDateString('vi-VN');
+
+        return {
+          text:
+            "Có thể sắp xếp giường phụ tùy loại phòng và tình trạng phòng.\n" +
+            `Hiện bạn đang xem phòng cho khoảng thời gian ${checkInStr} - ${checkOutStr}.\n` +
+            "Bạn hãy chọn phòng trong danh sách (gõ số thứ tự hoặc tên phòng), mình sẽ hỗ trợ kiểm tra khả năng thêm giường phụ và phí áp dụng cho phòng đó.",
+          rooms: null,
+          hasRooms: false
+        };
+      }
+
+      // Chưa có ngày → cần xin thêm thông tin
       return {
         text:
           "Có thể sắp xếp giường phụ tùy loại phòng và tình trạng phòng.\n" +
@@ -2890,6 +2954,8 @@ const getPatternBasedResponse = async (userMessage, context = {}) => {
                              lower.match(/(?:có thể|can).*?(?:hủy|cancel|đổi|change).*?(?:phòng|booking)/i) ||
                              lower.match(/(?:đổi ngày|change date|modify booking)/i);
   if (cancelChangePattern) {
+    const currentBookingAction = context.bookingContext?.bookingIntentAction || null;
+
     if (lower.includes('hủy') || lower.includes('cancel')) {
       return {
         text: 'Chính sách hủy phòng:\n\n' +
@@ -2905,7 +2971,20 @@ const getPatternBasedResponse = async (userMessage, context = {}) => {
         rooms: null,
         hasRooms: false
       };
-    } else if (lower.includes('đổi') || lower.includes('change') || lower.includes('modify')) {
+    } else if (currentBookingAction === 'change_room' &&
+               (!context.lastRoomSearchResults || context.lastRoomSearchResults.length === 0)) {
+      // User muốn đổi phòng nhưng không có danh sách phòng hiện tại -> hỏi lại tiêu chí/tìm phòng mới
+      return {
+        text: 'Bạn muốn đổi phòng. Hiện chưa có danh sách phòng đang hiển thị. ' +
+              'Bạn cho mình **ngày nhận – ngày trả** và **số khách**, hoặc tiêu chí phòng bạn muốn, ' +
+              'mình sẽ tìm và gửi lại danh sách phòng mới cho bạn nhé.',
+        rooms: null,
+        hasRooms: false
+      };
+    } else if ((lower.includes('đổi') || lower.includes('change') || lower.includes('modify')) &&
+               (!context.lastRoomSearchResults || context.lastRoomSearchResults.length === 0) &&
+               currentBookingAction !== 'change_room') {
+      // Chỉ trả lời chính sách đổi booking khi KHÔNG đang ở giữa flow đổi phòng trong list
       return {
         text: 'Có thể đổi ngày/phòng với điều kiện:\n\n' +
               '✅ Đổi trước 48 giờ: Miễn phí (nếu có phòng trống)\n' +
@@ -5453,7 +5532,7 @@ const getPatternBasedResponse = async (userMessage, context = {}) => {
             console.log(`✅ Pattern-based: Found ${rooms.length} rooms (no API call)`);
             
             return {
-              text: `Tôi đã tìm thấy ${rooms.length} phòng phù hợp với yêu cầu của bạn. Vui lòng chọn phòng bạn muốn đặt.`,
+              text: `Mình đã tìm được ${rooms.length} phòng phù hợp với yêu cầu của bạn! 😊 Vui lòng chọn phòng bạn muốn đặt (gõ số thứ tự hoặc tên phòng).`,
               rooms: formattedRooms,
               hasRooms: true
             };
@@ -9941,7 +10020,7 @@ const getAIResponse = async (userMessage, context = {}, conversationHistory = []
       if (roomSearchResults && roomSearchResults.length > 0) {
         // Response ngắn gọn khi có phòng
         const shortResponse = isRoomSearchRequest 
-          ? `Tôi đã tìm thấy ${roomSearchResults.length} phòng phù hợp với yêu cầu của bạn:`
+          ? `Mình đã tìm được ${roomSearchResults.length} phòng phù hợp với yêu cầu của bạn! 😊`
           : mockResponse;
         
         return {
@@ -9987,7 +10066,7 @@ const mockResponse = getMockAIResponse(userMessage);
   // Nếu có room search results, thêm vào response
   if (roomSearchResults && roomSearchResults.length > 0) {
     let responseText = mockResponse + "\n\n";
-    responseText += "📋 Tôi đã tìm thấy các phòng phù hợp với yêu cầu của bạn:\n\n";
+    responseText += "📋 Mình đã tìm được các phòng phù hợp với yêu cầu của bạn:\n\n";
     roomSearchResults.forEach((room, index) => {
       responseText += `${index + 1}. ${room.name} - ${room.roomType}\n`;
       responseText += `   💰 Giá: ${room.pricePerNight.toLocaleString('vi-VN')} VNĐ/đêm\n`;
@@ -11416,6 +11495,60 @@ export const chatWithAI = asyncHandler(async (req, res) => {
           count: verifySession?.context?.lastRoomSearchResults?.length || 0,
           contextKeys: verifySession?.context ? Object.keys(verifySession.context) : []
         });
+        
+        // ✅ QUAN TRỌNG: Nếu có select_room action và lastRoomSearchResults đã được cập nhật, trigger lại logic select_room
+        if (bookingIntent?.action === 'select_room' && bookingIntent.roomNumber && 
+            context.lastRoomSearchResults && context.lastRoomSearchResults.length > 0) {
+          const selectedRoomIndex = bookingIntent.roomNumber - 1;
+          if (selectedRoomIndex >= 0 && selectedRoomIndex < context.lastRoomSearchResults.length) {
+            const selectedRoom = context.lastRoomSearchResults[selectedRoomIndex];
+            console.log(`🔄 Re-triggering select_room after pattern-based update:`, {
+              roomNumber: bookingIntent.roomNumber,
+              selectedRoomName: selectedRoom.name,
+              selectedRoomId: selectedRoom._id
+            });
+            
+            // Cập nhật context.selectedRoom và bookingContext
+            context.selectedRoom = {
+              _id: selectedRoom._id.toString(),
+              id: selectedRoom._id.toString(),
+              name: selectedRoom.name,
+              pricePerNight: selectedRoom.pricePerNight,
+              roomType: selectedRoom.roomType,
+              maxOccupancy: selectedRoom.maxOccupancy,
+              view: selectedRoom.view || 'N/A',
+              image: selectedRoom.image || selectedRoom.thumbnailUrl || null,
+              thumbnailUrl: selectedRoom.thumbnailUrl || selectedRoom.image || null,
+              amenities: Array.isArray(selectedRoom.amenities) ? selectedRoom.amenities : []
+            };
+            
+            bookingContext.roomId = selectedRoom._id.toString();
+            bookingContext.roomName = selectedRoom.name;
+            bookingContext.roomPrice = selectedRoom.pricePerNight;
+            
+            // Lưu vào session
+            if (session) {
+              session.context.selectedRoom = context.selectedRoom;
+              session.context.bookingContext = bookingContext;
+              session.markModified('context');
+              await session.save();
+              console.log(`✅ Re-saved selectedRoom after pattern-based update: ${context.selectedRoom.name}`);
+            }
+            
+            // Cập nhật roomsData để hiển thị card phòng đã chọn
+            roomsData = [{
+              id: selectedRoom._id.toString(),
+              name: selectedRoom.name,
+              roomType: selectedRoom.roomType || 'Standard',
+              pricePerNight: selectedRoom.pricePerNight || 0,
+              maxOccupancy: selectedRoom.maxOccupancy || 2,
+              view: selectedRoom.view || 'N/A',
+              image: selectedRoom.image || selectedRoom.thumbnailUrl || '',
+              amenities: Array.isArray(selectedRoom.amenities) ? selectedRoom.amenities : []
+            }];
+            hasRooms = true;
+          }
+        }
       } else {
         // ✅ Giữ nguyên list phòng ban đầu, không cập nhật
         const skipReason = isAmenitiesResponse ? 'amenities response' : 
@@ -12424,10 +12557,23 @@ export const chatWithAI = asyncHandler(async (req, res) => {
     
     // ✅ Nếu user vừa chọn phòng, ưu tiên thông điệp xác nhận chọn phòng (không lặp lại tìm phòng)
     if (bookingIntent?.action === 'select_room' && context.selectedRoom) {
-      finalResponseText = context.language === 'en'
-        ? `You selected **${context.selectedRoom.name}**. If you want to change rooms, say "show all available rooms". To change dates, say "change date ...". Please share check-in/check-out dates and your contact info to proceed.`
-        : `Bạn đã chọn  **${context.selectedRoom.name}** phòng đã sẵn sàng 😊 
-Bạn chỉ cần nhấn “Đặt phòng ngay” trên thẻ phòng hoặc nhập ngày nhận – ngày trả và số khách, sau đó cung cấp trực tiếp họ và tên, email, số điện thoại để mình tạo link đặt phòng và hỗ trợ hoàn tất nhanh chóng cho bạn nhé.`;
+      const hasDates =
+        context.bookingContext &&
+        context.bookingContext.checkInDate &&
+        context.bookingContext.checkOutDate;
+
+      if (context.language === 'en') {
+        finalResponseText = `You selected **${context.selectedRoom.name}**. 
+Just click the \"Book now\" button on the room card. 
+To help you complete the booking faster, please share your **full name, email, and phone number** and our staff will assist you.`;
+      } else {
+        finalResponseText = hasDates
+          ? `Bạn đã chọn **${context.selectedRoom.name}**, phòng đã sẵn sàng 😊
+Bạn chỉ cần nhấn nút \"Đặt phòng ngay\" trên thẻ phòng.
+Nếu muốn mình hỗ trợ giữ phòng và hoàn tất đặt chỗ nhanh hơn, hãy gửi giúp mình **Họ và tên, email, số điện thoại** nhé.`
+          : `Bạn đã chọn **${context.selectedRoom.name}** 😊
+Để mình kiểm tra và giữ phòng cho bạn, vui lòng cho mình **ngày nhận – ngày trả** và **số khách**, sau đó gửi thêm **Họ và tên, email, số điện thoại** để mình tạo link đặt phòng và hỗ trợ bạn hoàn tất nhé.`;
+      }
 
       if (finalRoomsData && finalRoomsData.length > 0) {
         // Giữ lại card đã có (đã được filter về phòng đang xem ở trên)
