@@ -10,7 +10,6 @@ export const getPendingChats = asyncHandler(async (req, res) => {
     const { status, platform } = req.query;
     let statusFilter = { $in: ["active", "waiting", "resolved"] }; // Hiển thị tất cả
     
-    
     if (status === 'pending') {
       statusFilter = { $in: ["active", "waiting"] };
     } else if (status === 'resolved') {
@@ -29,19 +28,26 @@ export const getPendingChats = asyncHandler(async (req, res) => {
         queryFilter.platform = 'web';
       } else if (platform === 'telegram') {
         // Tìm theo context.platform hoặc platform = 'telegram' (nếu có)
-        queryFilter.$or = [
-          { platform: 'telegram' },
-          { 'context.platform': 'telegram' }
-        ];
+        // Sử dụng $or riêng để tránh conflict với queryFilter
+        queryFilter = {
+          ...queryFilter,
+          $or: [
+            { platform: 'telegram' },
+            { 'context.platform': 'telegram' }
+          ]
+        };
       }
       // Nếu platform = 'all' hoặc không có, không thêm filter
     }
 
+    console.log('🔍 [getPendingChats] Query filter:', JSON.stringify(queryFilter, null, 2));
     const pendingSessions = await ChatSession.find(queryFilter)
       .populate("userId", "fullName email")
       .populate("assignedTo", "fullName email")
       .sort({ transferredAt: -1, createdAt: -1 })
       .lean();
+    
+    console.log(`✅ [getPendingChats] Found ${pendingSessions.length} sessions`);
 
     // Lấy tin nhắn cuối cùng của mỗi session
     const sessionsWithLastMessage = await Promise.all(
@@ -164,6 +170,7 @@ export const assignSession = asyncHandler(async (req, res) => {
 export const adminReply = asyncHandler(async (req, res) => {
   try {
     const { sessionId, message } = req.body;
+    console.log('📤 [adminReply] Request:', { sessionId, messageLength: message?.length });
 
     if (!message || !message.trim()) {
       return res.status(400).json({
@@ -172,14 +179,24 @@ export const adminReply = asyncHandler(async (req, res) => {
       });
     }
 
+    if (!sessionId) {
+      return res.status(400).json({
+        success: false,
+        message: "Session ID không được để trống"
+      });
+    }
+
     const session = await ChatSession.findOne({ sessionId });
 
     if (!session) {
+      console.error('❌ [adminReply] Session not found:', sessionId);
       return res.status(404).json({
         success: false,
         message: "Không tìm thấy session"
       });
     }
+
+    console.log('✅ [adminReply] Session found:', session.sessionId, 'Status:', session.status);
 
     // Lưu tin nhắn của admin
     const adminMessage = await ChatMessage.create({
@@ -189,10 +206,14 @@ export const adminReply = asyncHandler(async (req, res) => {
       sender: "admin"
     });
 
+    console.log('✅ [adminReply] Message created:', adminMessage._id);
+
     // Cập nhật session
     session.messages.push(adminMessage._id);
     session.status = "active";
     await session.save();
+
+    console.log('✅ [adminReply] Session updated successfully');
 
     res.status(200).json({
       success: true,
@@ -202,6 +223,7 @@ export const adminReply = asyncHandler(async (req, res) => {
       }
     });
   } catch (error) {
+    console.error('❌ [adminReply] Error:', error);
     res.status(500).json({
       success: false,
       message: "Lỗi khi gửi tin nhắn",
