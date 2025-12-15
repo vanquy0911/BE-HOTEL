@@ -8,7 +8,7 @@ export const getNearbyPlaces = asyncHandler(async (req, res) => {
   if (category) filter.category = category;
   
   const places = await NearbyPlace.find(filter).sort({ distance: 1 });
-  res.json(places);
+  res.json({ data: places });
 });
 
 // POST /api/nearby-places - Tạo địa điểm mới (Admin)

@@ -1,5 +1,7 @@
 # Chính sách khách sạn
 
+Rayal Park Hotel tại Vũng Tàu - khu vực ven biển kết hợp hài hòa giữa biển và đồi núi. Chúng tôi áp dụng các chính sách rõ ràng và minh bạch để đảm bảo trải nghiệm tốt nhất cho khách hàng.
+
 ## Chính sách Check-in/Check-out
 - **Check-in:** Từ 14:00 (2:00 PM)
 - **Check-out:** Trước 12:00 (12:00 PM)
@@ -29,3 +31,9 @@
 ## Chính sách Hút thuốc
 - Khách sạn không cho phép hút thuốc trong phòng
 - Có khu vực hút thuốc riêng ở tầng 1
+
+---
+
+## Xem thêm
+- **Vị trí khách sạn:** Thông tin về vị trí tại Vũng Tàu (hotel-location.md)
+- **FAQ:** Câu hỏi thường gặp về đặt phòng và dịch vụ (faq.md)

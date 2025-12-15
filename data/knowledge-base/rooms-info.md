@@ -1,5 +1,7 @@
 # Thông tin Phòng
 
+Rayal Park Hotel tại Vũng Tàu cung cấp các loại phòng đa dạng, từ phòng tiêu chuẩn đến suite cao cấp. Tất cả phòng đều được trang bị đầy đủ tiện nghi hiện đại, nhiều phòng có view đẹp hướng biển hoặc núi.
+
 ## Phòng Đơn (Single Room)
 - Diện tích: 25-30 m²
 - Giường: 1 giường đơn hoặc 1 giường đôi
@@ -27,3 +29,10 @@
 - Sức chứa: 2-4 người
 - Giá: 6.000.000+ VNĐ/đêm
 - Tiện nghi: WiFi, TV 65 inch, Minibar cao cấp, Phòng tắm xa xỉ với bồn tắm jacuzzi, Phòng khách riêng, Ban công rộng, View panorama
+
+---
+
+## Xem thêm
+- **Vị trí khách sạn:** Thông tin về vị trí đắc địa tại Vũng Tàu (hotel-location.md)
+- **Dịch vụ:** Chi tiết các dịch vụ khách sạn (services.md)
+- **Địa điểm tham quan:** Bãi biển, núi và nhà hàng gần khách sạn (nearby-attractions.md)

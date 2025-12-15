@@ -1,5 +1,7 @@
 # FAQ - Câu hỏi thường gặp
 
+Rayal Park Hotel tại Vũng Tàu - vị trí đắc địa gần biển và núi, thuận tiện tham quan các bãi biển, địa điểm leo núi và nhà hàng hải sản địa phương.
+
 ## Đặt phòng
 **Q: Tôi có thể đặt phòng trực tuyến không?**
 A: Có, bạn có thể đặt phòng trực tuyến trên website của chúng tôi hoặc gọi hotline 0901 234 567 để được hỗ trợ.
@@ -33,3 +35,10 @@ A: Có, chúng tôi có bãi đỗ xe miễn phí cho khách hàng lưu trú.
 
 **Q: Khách sạn có phục vụ bữa sáng không?**
 A: Có, chúng tôi có nhà hàng phục vụ bữa sáng buffet từ 6:30 - 10:00 sáng hàng ngày.
+
+---
+
+## Xem thêm
+- **Vị trí khách sạn:** Thông tin về vị trí đắc địa tại Vũng Tàu (hotel-location.md)
+- **Địa điểm tham quan:** Bãi biển, núi và nhà hàng gần khách sạn (nearby-attractions.md)
+- **Dịch vụ:** Chi tiết các dịch vụ khách sạn (services.md)

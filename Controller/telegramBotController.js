@@ -6,12 +6,13 @@ import mongoose from 'mongoose';
 // dotenv.config();
 let isMongoConnected = false;
 
-// Khởi tạo Telegram Bot
+// Khởi tạo Telegram Bot (có thể bật/tắt qua ENV để tránh lỗi 409 khi chạy nhiều instance)
 const token = process.env.TELEGRAM_BOT_TOKEN;
+const enableTelegram = process.env.ENABLE_TELEGRAM_BOT === 'true';
 let bot = null;
 
-if (token) {
-  // Sử dụng polling mode (phù hợp cho development)
+if (token && enableTelegram) {
+  // Sử dụng polling mode (dev). Khi deploy nhiều instance, nên tắt hoặc chuyển webhook.
   bot = new TelegramBot(token, { 
     polling: {
       interval: 300,
@@ -21,10 +22,9 @@ if (token) {
       }
     }
   });
-  console.log('✅ Telegram Bot initialized successfully');
+  console.log('✅ Telegram Bot initialized successfully (polling).');
 } else {
-  console.log('⚠️  TELEGRAM_BOT_TOKEN not found in .env file');
-  console.log('💡 Telegram bot sẽ không hoạt động. Thêm TELEGRAM_BOT_TOKEN vào .env để kích hoạt.');
+  console.log('ℹ️  Telegram bot disabled. Set ENABLE_TELEGRAM_BOT=true and TELEGRAM_BOT_TOKEN to enable.');
 }
 
 const checkMongoConnection = () => {

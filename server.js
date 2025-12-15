@@ -20,6 +20,7 @@ import promotionRoutes from "./routes/promotionRoutes.js";
 import specialRequestRoutes from "./routes/specialRequestRoutes.js";
 import contactRoutes from "./routes/contactRoutes.js";
 import nearbyPlaceRoutes from "./routes/nearbyPlaceRoutes.js";
+import tourRoutes from "./routes/tourRoutes.js";
 import emailReminderRoutes from "./routes/emailReminderRoutes.js";
 import "./Controller/telegramBotController.js";
 import googleCalendarService from "./services/googleCalendarService.js";
@@ -108,6 +109,7 @@ app.use("/api/promotions", promotionRoutes);
 app.use("/api/special-requests", specialRequestRoutes);
 app.use("/api/contact", contactRoutes);
 app.use("/api/nearby-places", nearbyPlaceRoutes);
+app.use("/api/tours", tourRoutes);
 app.use("/api/email-reminders", emailReminderRoutes);
 // app.use("/auth", authRoutes);  
 
