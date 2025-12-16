@@ -24,6 +24,8 @@
         "fix-admin": "node fixAdmin.js",
         "seed-booking": "node seedBookingData.js",
         "seed-services": "node seedServices.js",
-        "ingest-kb": "node scripts/ingestKnowledgeBase.js"
+        "ingest-kb": "node scripts/ingestKnowledgeBase.js",
+        "view-cache": "node scripts/viewCache.js",
+        "seed-nearby-places": "node scripts/seedNearbyPlacesFromKB.js"
     }
 }

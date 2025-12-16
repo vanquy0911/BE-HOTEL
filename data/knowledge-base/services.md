@@ -1,5 +1,7 @@
 # Dịch vụ khách sạn
 
+Rayal Park Hotel tọa lạc tại Vũng Tàu, khu vực ven biển kết hợp hài hòa giữa biển và đồi núi. Khách sạn mang đến trải nghiệm nghỉ dưỡng độc đáo với đầy đủ dịch vụ tiện nghi, thuận tiện tham quan các bãi biển, núi và địa điểm du lịch nổi tiếng.
+
 ## Dịch vụ Phòng
 - WiFi miễn phí tốc độ cao
 - TV màn hình phẳng với kênh quốc tế
@@ -32,3 +34,9 @@
 - Dịch vụ đổi tiền
 - Bảo vệ 24/7
 - Bãi đỗ xe miễn phí
+
+---
+
+## Xem thêm
+- **Vị trí khách sạn:** Xem chi tiết về vị trí đắc địa gần biển và núi (hotel-location.md)
+- **Địa điểm tham quan:** Khám phá các bãi biển, núi và nhà hàng gần khách sạn (nearby-attractions.md)

@@ -149,7 +149,9 @@ const calculateTotalPriceWithChildSurcharge = (
 };
 
 // System prompt cho AI chatbot khách sạn
-const SYSTEM_PROMPT = `Bạn là trợ lý ảo của Rayal Park Hotel (5 sao, 123 Đường ABC, Q1, TP.HCM, hotline 0901 234 567, email info@rayalpark.com).
+const SYSTEM_PROMPT = `Bạn là trợ lý ảo của Rayal Park Hotel (5 sao, Đường Thùy Vân, Phường Thắng Tam, TP. Vũng Tàu, tỉnh Bà Rịa – Vũng Tàu, hotline 0901 234 567, email info@rayalpark.com).
+
+VỊ TRÍ ĐẶC BIỆT: Khách sạn tọa lạc tại Vũng Tàu, khu vực ven biển kết hợp hài hòa giữa biển và đồi núi, gần các bãi biển nổi tiếng (Bãi Sau, Bãi Trước, Bãi Dứa), khu vực núi (Núi Nhỏ, Núi Lớn, Hải đăng Vũng Tàu) và nhiều nhà hàng hải sản địa phương.
 
 Ngôn ngữ: trả lời đúng ngôn ngữ khách dùng (Việt/Anh), không trộn ngôn ngữ.
 Phong cách: ngắn gọn, đúng trọng tâm, thân thiện; chỉ nêu điều khách hỏi; không lặp lại danh sách phòng.
@@ -867,6 +869,7 @@ const parseBookingIntent = (userMessage, context = {}) => {
       /phòng\s*(?:số|thứ|number)\s*(\d+)/i, // "phòng số 2", "phòng thứ 3" - ✅ QUAN TRỌNG: Pattern này phải ưu tiên
       /(?:chọn|đặt|muốn|book|select).*?(?:phòng|room).*?(\d+)(?!\s*người)/i, // "chọn phòng 2" (không có "người" sau)
       /phòng\s*(\d+)(?!\s*người)/i, // "phòng 2" (không có "người" sau) - chỉ khi có context.lastRoomSearchResults
+      /(?:chọn|đặt|muốn|book|select)\s*(\d+)(?!\s*người)/i, // "chọn 2", "đặt 2" - ✅ THÊM: Pattern cho "đổi phòng khác chọn 2"
       /số\s*(\d+)/i, // "số 2"
       /^(\d+)$/ // Chỉ có số (chỉ khi có context.lastRoomSearchResults)
     ];
@@ -885,6 +888,17 @@ const parseBookingIntent = (userMessage, context = {}) => {
           console.log(`✅ Parsed room selection: "phòng số ${roomNum}" (from list of ${context.lastRoomSearchResults.length} rooms) - Overriding change_room`);
           break;
         }
+        // ✅ QUAN TRỌNG: Nếu có từ "chọn" rõ ràng + số hợp lệ, luôn override change_room thành select_room
+        // (ngay cả khi list phòng count = 0, vì user vẫn muốn chọn phòng số X)
+        const hasExplicitSelectKeyword = /(?:chọn|đặt|muốn|book|select)\s*(\d+)/i.test(lowerMessage) || 
+                                         /(?:chọn|đặt|muốn|book|select).*?(?:phòng|room).*?(\d+)/i.test(lowerMessage);
+        if (hasExplicitSelectKeyword && roomNum >= 1 && roomNum <= 20) {
+          intent.action = 'select_room'; // ✅ Override change_room ngay cả khi không có list phòng
+          intent.roomNumber = roomNum;
+          roomSelected = true;
+          console.log(`✅ Parsed explicit room selection: "chọn ${roomNum}" - Overriding change_room (list count: ${context.lastRoomSearchResults?.length || 0})`);
+          break;
+        }
         // Chỉ coi là chọn phòng nếu:
         // 1. Số hợp lý (1-20) VÀ
         // 2. Có từ khóa "chọn/đặt/phòng thứ/phòng số"
@@ -893,6 +907,47 @@ const parseBookingIntent = (userMessage, context = {}) => {
           intent.action = 'select_room';
           intent.roomNumber = roomNum;
           roomSelected = true;
+          break;
+        }
+      }
+    }
+    
+    // ✅ THÊM: Parse "phòng cuối cùng", "phòng cuối", "phòng cuối cùng trong list"
+    if (!roomSelected && hasRoomList && context.lastRoomSearchResults.length > 0) {
+      const lastRoomPatterns = [
+        /(?:phòng|room).*?(?:cuối cùng|cuối|last)/i, // "phòng cuối cùng", "phòng cuối", "room last"
+        /(?:cuối cùng|cuối|last).*?(?:phòng|room)/i, // "cuối cùng", "cuối", "last room"
+        /(?:chọn|đặt|muốn|book|select).*?(?:phòng|room).*?(?:cuối cùng|cuối|last)/i // "chọn phòng cuối cùng"
+      ];
+      
+      for (const pattern of lastRoomPatterns) {
+        const match = lowerMessage.match(pattern);
+        if (match) {
+          const lastRoomNumber = context.lastRoomSearchResults.length;
+          intent.action = 'select_room';
+          intent.roomNumber = lastRoomNumber;
+          roomSelected = true;
+          console.log(`✅ Parsed last room selection: "phòng cuối cùng" = room #${lastRoomNumber} (from list of ${context.lastRoomSearchResults.length} rooms)`);
+          break;
+        }
+      }
+    }
+    
+    // ✅ THÊM: Parse "phòng đầu tiên", "phòng đầu", "phòng đầu tiên trong list"
+    if (!roomSelected && hasRoomList && context.lastRoomSearchResults.length > 0) {
+      const firstRoomPatterns = [
+        /(?:phòng|room).*?(?:đầu tiên|đầu|first)/i, // "phòng đầu tiên", "phòng đầu", "room first"
+        /(?:đầu tiên|đầu|first).*?(?:phòng|room)/i, // "đầu tiên", "đầu", "first room"
+        /(?:chọn|đặt|muốn|book|select).*?(?:phòng|room).*?(?:đầu tiên|đầu|first)/i // "chọn phòng đầu tiên"
+      ];
+      
+      for (const pattern of firstRoomPatterns) {
+        const match = lowerMessage.match(pattern);
+        if (match) {
+          intent.action = 'select_room';
+          intent.roomNumber = 1; // Phòng đầu tiên = số 1
+          roomSelected = true;
+          console.log(`✅ Parsed first room selection: "phòng đầu tiên" = room #1 (from list of ${context.lastRoomSearchResults.length} rooms)`);
           break;
         }
       }
@@ -1542,9 +1597,8 @@ const getRuleBasedResponse = (userMessage, language = 'vi') => {
   return null; // Không tìm thấy, cần dùng AI
 };
 
-// ✅ THÊM: Response Cache System - Lưu và tái sử dụng AI responses
-const responseCache = new Map();
-const MAX_CACHE_SIZE = 1000; // ✅ Tăng từ 500 → 1000 để cache nhiều responses hơn (tiết kiệm requests)
+// ✅ SỬA: Response Cache System - Database-only (không dùng RAM)
+// Cache được lưu trực tiếp vào MongoDB, không cần RAM cache
 
 /**
  * Lấy cached response nếu có
@@ -1560,57 +1614,137 @@ const normalizeCacheKey = (text = "") => {
     .replace(/[.!?…]+$/g, "");
 };
 
-const getCachedResponse = (userMessage) => {
+// ✅ SỬA: Database-only cache (không dùng RAM)
+const getCachedResponse = async (userMessage) => {
   const cacheKey = normalizeCacheKey(userMessage);
-  const cached = responseCache.get(cacheKey);
   
-  if (cached) {
-    console.log('✅ Using cached response (no API call)');
-    return cached;
+  try {
+    const ResponseCache = (await import('../Models/ResponseCacheModel.js')).default;
+    const cached = await ResponseCache.findOne(
+      { queryKey: cacheKey },
+      { response: 1, _id: 0 } // Chỉ lấy response, không lấy _id
+    );
+    
+    if (cached && cached.response) {
+      // Update hit count và last used (async, không block)
+      ResponseCache.updateOne(
+        { queryKey: cacheKey },
+        { $inc: { hitCount: 1 }, lastUsed: new Date() }
+      ).catch(err => console.error('Error updating cache hit count:', err));
+      
+      console.log('✅ Using cached response from database (no API call)');
+      return cached.response;
+    }
+  } catch (error) {
+    console.error('❌ Error loading cache from database:', error);
   }
   
   return null;
 };
 
 /**
- * Lưu response vào cache
+ * ✅ SỬA: Lưu response vào database (không dùng RAM)
  * @param {string} userMessage - User message
  * @param {object} response - AI response
  */
-const setCachedResponse = (userMessage, response) => {
+const setCachedResponse = async (userMessage, response) => {
   const cacheKey = normalizeCacheKey(userMessage);
   
   // Chỉ cache nếu response hợp lệ
   if (response && response.text) {
-    responseCache.set(cacheKey, response);
-    
-    // Giới hạn cache size (FIFO - First In First Out)
-    if (responseCache.size > MAX_CACHE_SIZE) {
-      const firstKey = responseCache.keys().next().value;
-      responseCache.delete(firstKey);
-      console.log(`🗑️  Removed oldest cache entry (cache size: ${responseCache.size})`);
+    try {
+      const ResponseCache = (await import('../Models/ResponseCacheModel.js')).default;
+      
+      await ResponseCache.findOneAndUpdate(
+        { queryKey: cacheKey },
+        {
+          queryKey: cacheKey,
+          queryText: userMessage,
+          response: response,
+          $inc: { hitCount: 0 }, // Không tăng nếu mới tạo
+          lastUsed: new Date()
+        },
+        { upsert: true, new: true }
+      );
+      
+      console.log(`💾 Saved cache to database: ${cacheKey}`);
+    } catch (error) {
+      console.error('❌ Error saving cache to database:', error);
     }
-    
-    console.log(`💾 Cached response (cache size: ${responseCache.size})`);
   }
 };
 
 /**
- * Clear cache (cho testing hoặc khi cần)
+ * ✅ SỬA: Clear cache từ database (cho testing hoặc khi cần)
  */
-const clearResponseCache = () => {
-  responseCache.clear();
-  console.log('🗑️  Response cache cleared');
+const clearResponseCache = async () => {
+  try {
+    const ResponseCache = (await import('../Models/ResponseCacheModel.js')).default;
+    await ResponseCache.deleteMany({});
+    console.log('🗑️  Response cache cleared from database');
+  } catch (error) {
+    console.error('❌ Error clearing cache:', error);
+  }
 };
 
 /**
- * Get cache stats
+ * ✅ SỬA: Get cache stats từ database
  */
-const getCacheStats = () => {
-  return {
-    size: responseCache.size,
-    maxSize: MAX_CACHE_SIZE
-  };
+const getCacheStats = async () => {
+  try {
+    const ResponseCache = (await import('../Models/ResponseCacheModel.js')).default;
+    const count = await ResponseCache.countDocuments();
+    return {
+      size: count,
+      maxSize: 'unlimited' // Database không giới hạn như RAM
+    };
+  } catch (error) {
+    console.error('❌ Error getting cache stats:', error);
+    return { size: 0, maxSize: 'unlimited' };
+  }
+};
+
+/**
+ * ✅ THÊM: Cleanup cache cũ (xóa cache không dùng > 30 ngày hoặc giới hạn 1000 entries)
+ */
+const cleanupOldCache = async () => {
+  try {
+    const ResponseCache = (await import('../Models/ResponseCacheModel.js')).default;
+    
+    // Xóa cache không dùng > 30 ngày
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    
+    const deletedOld = await ResponseCache.deleteMany({
+      lastUsed: { $lt: thirtyDaysAgo }
+    });
+    
+    // Giới hạn số lượng cache (giữ 1000 entries mới nhất)
+    const count = await ResponseCache.countDocuments();
+    if (count > 1000) {
+      const oldest = await ResponseCache.find()
+        .sort({ lastUsed: 1 })
+        .limit(count - 1000)
+        .select('_id');
+      
+      const ids = oldest.map(item => item._id);
+      const deletedLimit = await ResponseCache.deleteMany({ _id: { $in: ids } });
+      
+      console.log(`🗑️  Cleaned up ${deletedLimit.deletedCount} oldest cache entries (kept 1000 most recent)`);
+    }
+    
+    if (deletedOld.deletedCount > 0) {
+      console.log(`🗑️  Cleaned up ${deletedOld.deletedCount} cache entries older than 30 days`);
+    }
+    
+    return {
+      deletedOld: deletedOld.deletedCount,
+      deletedLimit: count > 1000 ? count - 1000 : 0
+    };
+  } catch (error) {
+    console.error('❌ Error cleaning up old cache:', error);
+    return { deletedOld: 0, deletedLimit: 0 };
+  }
 };
 
 // ✅ GIAI ĐOẠN 1: Rate Limiting per User/Session
@@ -1714,6 +1848,12 @@ const getUserRateLimitStats = (sessionId) => {
  * @param {string} userMessage - User message
  * @param {object} context - Conversation context
  * @returns {object|null} - Response object hoặc null nếu không match
+ * 
+ * ⚠️ NOTE: Một số pattern đã được tạm thời disable để test AI:
+ * - Pattern 2.3 (conversation pattern)
+ * - Pattern 6.4 (explore pattern)
+ * - Rule-based responses
+ * TODO: Re-enable sau khi test AI xong
  */
 const getPatternBasedResponse = async (userMessage, context = {}) => {
   const lower = userMessage.toLowerCase().trim();
@@ -2022,10 +2162,12 @@ const getPatternBasedResponse = async (userMessage, context = {}) => {
   // ✅ Pattern 0: "Tôi muốn đặt phòng từ ngày X đến Y cho Z người" → Tự động parse và tìm phòng
   // Pattern này phải được check TRƯỚC Pattern 1 để tránh yêu cầu lại thông tin
   // ✅ SỬA: Pattern regex linh hoạt hơn để match với nhiều format
-  const fullBookingPattern = lower.match(/(?:tôi|i|muốn|want|đặt|book).*?(?:phòng|room).*?(?:từ|from).*?(?:ngày\s*)?(\d{1,2}\/\d{1,2}(?:\/\d{4})?|hôm nay|ngày mai|ngày kia|today|tomorrow).*?(?:đến|to).*?(?:ngày\s*)?(\d{1,2}\/\d{1,2}(?:\/\d{4})?|hôm nay|ngày mai|ngày kia|today|tomorrow).*?(?:cho|for).*?(\d+)\s*(?:người|people|person|guests)/i) ||
+  const fullBookingPattern = lower.match(/(?:tôi|i|muốn|want|đặt|book).*?(?:phòng|room).*?(?:từ|from).*?(?:ngày\s*)?(\d{1,2}\/\d{1,2}(?:\/\d{4})?|hôm nay|ngày mai|ngày kia|today|tomorrow).*?(?:đến|to|-).*?(?:ngày\s*)?(\d{1,2}\/\d{1,2}(?:\/\d{4})?|hôm nay|ngày mai|ngày kia|today|tomorrow).*?(?:cho|for).*?(\d+)\s*(?:người|people|person|guests)/i) ||
                             lower.match(/(?:tôi|i|muốn|want|đặt|book).*?(?:phòng|room).*?(?:ngày\s*)?(\d{1,2}\/\d{1,2}(?:\/\d{4})?)\s*(?:đến|-|to)\s*(?:ngày\s*)?(\d{1,2}\/\d{1,2}(?:\/\d{4})?).*?(?:cho|for).*?(\d+)\s*(?:người|people|person|guests)/i) ||
                             // Pattern đơn giản hơn: "đặt phòng 25/12/2024 đến 27/12/2024 cho 2 người"
-                            lower.match(/(?:đặt|book|muốn|want).*?(?:phòng|room).*?(\d{1,2}\/\d{1,2}(?:\/\d{4})?)\s*(?:đến|-|to)\s*(\d{1,2}\/\d{1,2}(?:\/\d{4})?).*?(?:cho|for).*?(\d+)\s*(?:người|people|person|guests)/i);
+                            lower.match(/(?:đặt|book|muốn|want).*?(?:phòng|room).*?(\d{1,2}\/\d{1,2}(?:\/\d{4})?)\s*(?:đến|-|to)\s*(\d{1,2}\/\d{1,2}(?:\/\d{4})?).*?(?:cho|for).*?(\d+)\s*(?:người|people|person|guests)/i) ||
+                            // ✅ THÊM: Pattern với dấu "-" thay vì "đến": "đặt phòng 25/12-27/12 cho 2 người"
+                            lower.match(/(?:đặt|book|muốn|want).*?(?:phòng|room).*?(\d{1,2}\/\d{1,2}(?:\/\d{4})?)\s*-\s*(\d{1,2}\/\d{1,2}(?:\/\d{4})?).*?(?:cho|for).*?(\d+)\s*(?:người|people|person|guests)/i);
   
   console.log('🔍 Pattern 0 check:', {
     userMessage: userMessage.substring(0, 100),
@@ -2088,12 +2230,12 @@ const getPatternBasedResponse = async (userMessage, context = {}) => {
           const checkOutStr = checkOutDate.toLocaleDateString('vi-VN');
           const nights = Math.ceil((checkOutDate - checkInDate) / (1000 * 60 * 60 * 24));
           
-          let responseText = `Tôi đã tìm thấy ${rooms.length} phòng phù hợp cho bạn:\n\n`;
+          let responseText = `Mình đã tìm được ${rooms.length} phòng phù hợp cho bạn rồi! 😊\n\n`;
           responseText += `📅 **Thông tin đặt phòng:**\n`;
-          responseText += `- Check-in: ${checkInStr}\n`;
-          responseText += `- Check-out: ${checkOutStr}\n`;
-          responseText += `- Số đêm: ${nights} đêm\n`;
-          responseText += `- Số khách: ${guests} người\n\n`;
+          responseText += `• Check-in: ${checkInStr}\n`;
+          responseText += `• Check-out: ${checkOutStr}\n`;
+          responseText += `• Số đêm: ${nights} đêm\n`;
+          responseText += `• Số khách: ${guests} người\n\n`;
           responseText += `Dưới đây là danh sách phòng:\n\n`;
           
           // Format rooms list
@@ -2109,7 +2251,7 @@ const getPatternBasedResponse = async (userMessage, context = {}) => {
             responseText += `\n`;
           });
           
-          responseText += `Bạn muốn chọn phòng nào? Vui lòng cho biết số thứ tự (ví dụ: "phòng số 1" hoặc "1") 🏨`;
+          responseText += `Bạn muốn xem chi tiết phòng nào trước? Gõ số thứ tự (1, 2, 3...) hoặc tên phòng, mình sẽ hỗ trợ ngay. 🏨`;
           
           return {
             text: responseText,
@@ -2139,8 +2281,91 @@ const getPatternBasedResponse = async (userMessage, context = {}) => {
     }
   }
 
-  // ✅ Pattern dịch vụ/policy dùng dữ liệu thật từ config (không gọi Gemini)
+  // 🔄 Fallback pattern: "ngày nhận X đến Y ... người lớn ... trẻ em/bé" (thiếu từ "cho")
+  const dateWithFamilyPattern = lower.match(/(?:nhận|check[-\s]?in)?\s*(\d{1,2}\/\d{1,2}(?:\/\d{4})?).*?(?:đến|-|tới)\s*(\d{1,2}\/\d{1,2}(?:\/\d{4})?)/i);
+  if (dateWithFamilyPattern) {
+    const checkInDate = parseDateFromText(dateWithFamilyPattern[1]);
+    const checkOutDate = parseDateFromText(dateWithFamilyPattern[2]);
+
+    // Parse số người lớn / trẻ em từ toàn bộ câu (độc lập với regex ngày)
+    const adultsMatch = lower.match(/(\d+)\s*(?:người lớn|adults?)/i);
+    const kidsMatch = lower.match(/(\d+)\s*(?:trẻ em|bé|children?)/i);
+    const adults = adultsMatch ? parseInt(adultsMatch[1]) : 0;
+    const kids = kidsMatch ? parseInt(kidsMatch[1]) : 0;
+    const guests = adults + kids || adults || kids;
+
+    console.log('🔍 Fallback family booking parse:', { checkInRaw: dateWithFamilyPattern[1], checkOutRaw: dateWithFamilyPattern[2], adults, kids, guests });
+
+    if (checkInDate && checkOutDate && guests > 0) {
+      if (checkInDate >= checkOutDate) {
+        return {
+          text: 'Ngày trả phòng phải sau ngày nhận phòng. Vui lòng kiểm tra lại! 📅',
+          rooms: null,
+          hasRooms: false
+        };
+      }
+
+      try {
+        const searchCriteria = {
+          maxOccupancy: guests,
+          checkInDate,
+          checkOutDate
+        };
+        const rooms = await searchRooms(searchCriteria);
+        if (rooms && rooms.length > 0) {
+          if (!context.bookingContext) context.bookingContext = {};
+          context.bookingContext.checkInDate = checkInDate;
+          context.bookingContext.checkOutDate = checkOutDate;
+          context.bookingContext.guests = guests;
+          context.bookingContext.maxOccupancy = guests;
+          context.bookingContext.adults = adults || null;
+          context.bookingContext.children = kids || null;
+          context.lastRoomSearchResults = rooms;
+
+          const checkInStr = checkInDate.toLocaleDateString('vi-VN');
+          const checkOutStr = checkOutDate.toLocaleDateString('vi-VN');
+          const nights = Math.ceil((checkOutDate - checkInDate) / (1000 * 60 * 60 * 24));
+
+          let responseText = `Mình đã tìm được ${rooms.length} phòng phù hợp cho ${adults || guests} người lớn${kids ? ` và ${kids} trẻ em` : ''}! 😊\n\n`;
+          responseText += `📅 **Thông tin đặt phòng:**\n`;
+          responseText += `• Check-in: ${checkInStr}\n`;
+          responseText += `• Check-out: ${checkOutStr}\n`;
+          responseText += `• Số đêm: ${nights} đêm\n`;
+          responseText += `• Số khách: ${guests} người${kids ? ` (gồm ${kids} trẻ em)` : ''}\n\n`;
+          responseText += `Dưới đây là danh sách phòng:\n\n`;
+
+          rooms.forEach((room, index) => {
+            const roomPrice = room.pricePerNight || 0;
+            const totalPrice = roomPrice * nights;
+            responseText += `**${index + 1}. ${room.name || 'Phòng'}**\n`;
+            responseText += `- Giá: ${roomPrice.toLocaleString('vi-VN')} VNĐ/đêm\n`;
+            responseText += `- Tổng: ${totalPrice.toLocaleString('vi-VN')} VNĐ (${nights} đêm)\n`;
+            if (room.description) {
+              responseText += `- Mô tả: ${room.description.substring(0, 100)}...\n`;
+            }
+            responseText += `\n`;
+          });
+
+          responseText += `Bạn muốn xem chi tiết phòng nào trước? Gõ số thứ tự (1, 2, 3...) hoặc tên phòng, mình sẽ hỗ trợ ngay. 🏨`;
+
+          return {
+            text: responseText,
+            rooms,
+            hasRooms: true
+          };
+        }
+      } catch (error) {
+        console.error('Error searching rooms (family fallback):', error);
+      }
+    }
+  }
+
+  // ⚠️ TEMPORARILY DISABLED FOR AI/RAG TESTING - Pattern dịch vụ/policy dùng dữ liệu thật từ config
+  // TODO: Re-enable after AI/RAG testing
+  // Chỉ disable phần serviceMap loop, giữ lại các policy khác vì chúng cũng dùng dữ liệu từ DB
   if (hotelInfo) {
+    // ⚠️ DISABLED: Service map loop - để test AI/RAG
+    /*
     // Map từ keyword -> service key
     const serviceMap = [
       { key: "spa", keywords: ["spa", "massage"] },
@@ -2191,6 +2416,97 @@ const getPatternBasedResponse = async (userMessage, context = {}) => {
         }
         return resp;
       }
+    }
+    */
+
+    // Tư vấn phòng cho gia đình/trẻ em (pattern ngắn, không gọi AI)
+    if (matchKeywords(["gia đình", "family", "trẻ em", "trẻ nhỏ", "kid", "children"]) && matchKeywords(["phòng", "room"])) {
+      const childrenPolicy = getPolicy(hotelInfo, "children");
+      const policyText = childrenPolicy ? `\n\nChính sách trẻ em: ${childrenPolicy}` : "";
+      const hasBookingContextDates =
+        context.bookingContext &&
+        context.bookingContext.checkInDate &&
+        context.bookingContext.checkOutDate;
+      const hasRoomList = context.lastRoomSearchResults && context.lastRoomSearchResults.length > 0;
+
+      if (hasBookingContextDates && hasRoomList) {
+        const bc = context.bookingContext;
+        const checkInStr = new Date(bc.checkInDate).toLocaleDateString('vi-VN');
+        const checkOutStr = new Date(bc.checkOutDate).toLocaleDateString('vi-VN');
+        const guests = bc.guests || bc.maxOccupancy || '';
+
+        return {
+          text:
+            `Bạn đang xem danh sách phòng cho khoảng thời gian ${checkInStr} - ${checkOutStr}` +
+            (guests ? ` cho khoảng ${guests} khách.` : '.') +
+            `\n\nGợi ý phòng gia đình:\n` +
+            "- Ưu tiên các phòng có sức chứa lớn hơn số khách hoặc hỗ trợ giường phụ.\n" +
+            "- Nếu bạn thích một phòng cụ thể, hãy gõ số thứ tự (1, 2, 3, ...) để mình hỗ trợ tiếp.\n" +
+            policyText,
+          rooms: null,
+          hasRooms: false
+        };
+      }
+
+      // Chưa có ngày → chỉ tư vấn chung và xin thêm thông tin
+      return {
+        text:
+          "Gợi ý phòng gia đình:\n" +
+          "- Phòng 2 người + giường phụ (cho gia đình nhỏ).\n" +
+          "- Cần rộng hơn? Bạn cho mình ngày nhận/trả và số người lớn/trẻ em để mình tìm đúng phòng.\n" +
+          "- Giường phụ có thể sắp xếp tùy loại phòng và tình trạng.\n" +
+          policyText,
+        rooms: null,
+        hasRooms: false
+      };
+    }
+
+    // Hoạt động/địa điểm nhẹ nhàng cho gia đình/trẻ em (pattern ngắn)
+    if (matchKeywords(["gia đình", "trẻ em", "kid", "children"]) && matchKeywords(["gần đây", "đi đâu", "hoạt động", "dạo", "ngắm", "vui chơi", "play"])) {
+      return {
+        text:
+          "Gợi ý nhẹ nhàng cho gia đình/trẻ em:\n" +
+          "- Bãi Sau: 300-500m, tắm biển/dạo bộ/bình minh.\n" +
+          "- Bãi Dứa: ~2km, yên tĩnh, chụp ảnh.\n" +
+          "- Hải đăng Vũng Tàu: ~2km, ngắm cảnh/hoàng hôn.\n" +
+          "- Ẩm thực: Bánh khọt Gốc Vú Sữa (~2-3km), lẩu cá đuối (~2km).\n" +
+          "Bạn muốn đi buổi sáng, chiều hay tối? Mình sẽ gợi ý lịch trình chi tiết hơn.",
+        rooms: null,
+        hasRooms: false
+      };
+    }
+
+    // Giường phụ
+    if (matchKeywords(["giường phụ", "extra bed", "thêm giường"])) {
+      const hasBookingContextDates =
+        context.bookingContext &&
+        context.bookingContext.checkInDate &&
+        context.bookingContext.checkOutDate;
+      const hasRoomList = context.lastRoomSearchResults && context.lastRoomSearchResults.length > 0;
+
+      if (hasBookingContextDates && hasRoomList) {
+        const bc = context.bookingContext;
+        const checkInStr = new Date(bc.checkInDate).toLocaleDateString('vi-VN');
+        const checkOutStr = new Date(bc.checkOutDate).toLocaleDateString('vi-VN');
+
+        return {
+          text:
+            "Có thể sắp xếp giường phụ tùy loại phòng và tình trạng phòng.\n" +
+            `Hiện bạn đang xem phòng cho khoảng thời gian ${checkInStr} - ${checkOutStr}.\n` +
+            "Bạn hãy chọn phòng trong danh sách (gõ số thứ tự hoặc tên phòng), mình sẽ hỗ trợ kiểm tra khả năng thêm giường phụ và phí áp dụng cho phòng đó.",
+          rooms: null,
+          hasRooms: false
+        };
+      }
+
+      // Chưa có ngày → cần xin thêm thông tin
+      return {
+        text:
+          "Có thể sắp xếp giường phụ tùy loại phòng và tình trạng phòng.\n" +
+          "Bạn cho mình ngày nhận/trả và số người lớn/trẻ em, mình sẽ kiểm tra phòng nào thêm giường phụ được và báo phí cụ thể.",
+        rooms: null,
+        hasRooms: false
+      };
     }
 
     // Thanh toán
@@ -2279,6 +2595,9 @@ const getPatternBasedResponse = async (userMessage, context = {}) => {
       return { text: hotelInfo.disclaimers?.updating || `Thông tin sự kiện đang cập nhật, vui lòng liên hệ hotline ${hotline}.`, rooms: null, hasRooms: false };
     }
 
+    // ⚠️ TEMPORARILY DISABLED FOR AI/RAG TESTING - Pattern lịch sử/thành lập từ hotelInfo
+    // TODO: Re-enable after AI/RAG testing
+    /*
     // Giới thiệu / lịch sử / giải thưởng
     if (matchKeywords(["lịch sử", "history", "thành lập", "năm nào"])) {
       const about = hotelInfo.about;
@@ -2286,6 +2605,7 @@ const getPatternBasedResponse = async (userMessage, context = {}) => {
         return { text: about.history || `Khách sạn thành lập năm ${about.founded}.`, rooms: null, hasRooms: false };
       }
     }
+    */
     if (matchKeywords(["chủ", "owner"])) {
       const about = hotelInfo.about;
       if (about?.owner) return { text: `Chủ sở hữu: ${about.owner}.`, rooms: null, hasRooms: false };
@@ -2564,7 +2884,9 @@ const getPatternBasedResponse = async (userMessage, context = {}) => {
     };
   }
 
-  // Pattern 1.15: Hỏi về dịch vụ bổ sung (giường phụ, bữa sáng)
+  // ⚠️ TEMPORARILY DISABLED FOR AI/RAG TESTING - Pattern 1.15: Hỏi về dịch vụ bổ sung (giường phụ, bữa sáng)
+  // TODO: Re-enable after AI/RAG testing
+  /*
   const extraServicePattern = lower.match(/(?:thêm|add|extra|additional).*?(?:giường|bed|bữa sáng|breakfast|dịch vụ|service)/i) ||
                               lower.match(/(?:có thể|can).*?(?:thêm|add).*?(?:giường|bed|bữa sáng|breakfast)/i) ||
                               lower.match(/(?:giường phụ|extra bed|additional bed|bữa sáng thêm|extra breakfast)/i);
@@ -2592,6 +2914,7 @@ const getPatternBasedResponse = async (userMessage, context = {}) => {
       };
     }
   }
+  */
 
   // Pattern 1.16: Hỏi về thanh toán
   const paymentPattern = lower.match(/(?:thanh toán|payment|pay).*?(?:khi đến|on arrival|tại khách sạn|at hotel)/i) ||
@@ -2631,6 +2954,8 @@ const getPatternBasedResponse = async (userMessage, context = {}) => {
                              lower.match(/(?:có thể|can).*?(?:hủy|cancel|đổi|change).*?(?:phòng|booking)/i) ||
                              lower.match(/(?:đổi ngày|change date|modify booking)/i);
   if (cancelChangePattern) {
+    const currentBookingAction = context.bookingContext?.bookingIntentAction || null;
+
     if (lower.includes('hủy') || lower.includes('cancel')) {
       return {
         text: 'Chính sách hủy phòng:\n\n' +
@@ -2646,7 +2971,20 @@ const getPatternBasedResponse = async (userMessage, context = {}) => {
         rooms: null,
         hasRooms: false
       };
-    } else if (lower.includes('đổi') || lower.includes('change') || lower.includes('modify')) {
+    } else if (currentBookingAction === 'change_room' &&
+               (!context.lastRoomSearchResults || context.lastRoomSearchResults.length === 0)) {
+      // User muốn đổi phòng nhưng không có danh sách phòng hiện tại -> hỏi lại tiêu chí/tìm phòng mới
+      return {
+        text: 'Bạn muốn đổi phòng. Hiện chưa có danh sách phòng đang hiển thị. ' +
+              'Bạn cho mình **ngày nhận – ngày trả** và **số khách**, hoặc tiêu chí phòng bạn muốn, ' +
+              'mình sẽ tìm và gửi lại danh sách phòng mới cho bạn nhé.',
+        rooms: null,
+        hasRooms: false
+      };
+    } else if ((lower.includes('đổi') || lower.includes('change') || lower.includes('modify')) &&
+               (!context.lastRoomSearchResults || context.lastRoomSearchResults.length === 0) &&
+               currentBookingAction !== 'change_room') {
+      // Chỉ trả lời chính sách đổi booking khi KHÔNG đang ở giữa flow đổi phòng trong list
       return {
         text: 'Có thể đổi ngày/phòng với điều kiện:\n\n' +
               '✅ Đổi trước 48 giờ: Miễn phí (nếu có phòng trống)\n' +
@@ -2698,7 +3036,9 @@ const getPatternBasedResponse = async (userMessage, context = {}) => {
     }
   }
 
-  // Pattern 1.19: Hỏi về địa điểm gần khách sạn
+  // ⚠️ TEMPORARILY DISABLED FOR AI/RAG TESTING - Pattern 1.19: Hỏi về địa điểm gần khách sạn
+  // TODO: Re-enable after AI/RAG testing
+  /*
   const nearbyPattern = lower.match(/(?:gần|near|nearby|quanh|around).*?(?:khách sạn|hotel)/i) ||
                         lower.match(/(?:địa điểm|attraction|place|nơi).*?(?:gần|near|nearby)/i) ||
                         lower.match(/(?:có gì|có địa điểm|what).*?(?:gần|near|nearby)/i) ||
@@ -2717,6 +3057,7 @@ const getPatternBasedResponse = async (userMessage, context = {}) => {
       hasRooms: false
     };
   }
+  */
 
   // Pattern 1.20: Hỏi về ưu đãi/khuyến mãi
   const promotionPattern = lower.match(/(?:khuyến mãi|promotion|discount|ưu đãi|deal|offer|special)/i) ||
@@ -2982,7 +3323,9 @@ const getPatternBasedResponse = async (userMessage, context = {}) => {
     };
   }
 
-  // Pattern 4.1: Hỏi về dịch vụ ăn uống
+  // ⚠️ TEMPORARILY DISABLED FOR AI/RAG TESTING - Pattern 4.1: Hỏi về dịch vụ ăn uống
+  // TODO: Re-enable after AI/RAG testing
+  /*
   const diningPattern = lower.match(/(?:dịch vụ|service).*?(?:ăn uống|dining|food|restaurant)/i) ||
                         lower.match(/(?:có|có dịch vụ|have).*?(?:nhà hàng|restaurant|ăn sáng|breakfast|buffet)/i) ||
                         lower.match(/(?:ăn sáng|breakfast|buffet|room service|nhà hàng)/i);
@@ -3002,8 +3345,11 @@ const getPatternBasedResponse = async (userMessage, context = {}) => {
       hasRooms: false
     };
   }
+  */
 
-  // Pattern 4.2: Hỏi về Spa & Wellness
+  // ⚠️ TEMPORARILY DISABLED FOR AI/RAG TESTING - Pattern 4.2: Hỏi về Spa & Wellness
+  // TODO: Re-enable after AI/RAG testing
+  /*
   const spaPattern = lower.match(/(?:spa|massage|wellness|fitness|gym|bể bơi|pool|xông hơi|sauna)/i) ||
                      lower.match(/(?:có|có dịch vụ|have).*?(?:spa|gym|bể bơi|pool)/i);
   if (spaPattern) {
@@ -3025,8 +3371,11 @@ const getPatternBasedResponse = async (userMessage, context = {}) => {
       hasRooms: false
     };
   }
+  */
 
-  // Pattern 4.3: Hỏi về đưa đón sân bay
+  // ⚠️ TEMPORARILY DISABLED FOR AI/RAG TESTING - Pattern 4.3: Hỏi về đưa đón sân bay
+  // TODO: Re-enable after AI/RAG testing
+  /*
   const airportPattern = lower.match(/(?:đưa đón|transfer|pickup|pick up).*?(?:sân bay|airport)/i) ||
                         lower.match(/(?:airport|sân bay).*?(?:transfer|đưa đón|pickup)/i);
   if (airportPattern) {
@@ -3046,8 +3395,11 @@ const getPatternBasedResponse = async (userMessage, context = {}) => {
       hasRooms: false
     };
   }
+  */
 
-  // Pattern 4.4: Hỏi về giặt ủi
+  // ⚠️ TEMPORARILY DISABLED FOR AI/RAG TESTING - Pattern 4.4: Hỏi về giặt ủi
+  // TODO: Re-enable after AI/RAG testing
+  /*
   const laundryPattern = lower.match(/(?:giặt ủi|laundry|washing|dry cleaning)/i) ||
                         lower.match(/(?:có|có dịch vụ|have).*?(?:giặt|laundry)/i);
   if (laundryPattern) {
@@ -3063,8 +3415,11 @@ const getPatternBasedResponse = async (userMessage, context = {}) => {
       hasRooms: false
     };
   }
+  */
 
-  // Pattern 4.5: Hỏi về WiFi/Internet
+  // ⚠️ TEMPORARILY DISABLED FOR AI/RAG TESTING - Pattern 4.5: Hỏi về WiFi/Internet
+  // TODO: Re-enable after AI/RAG testing
+  /*
   const wifiPattern = lower.match(/(?:wifi|internet|mạng|network|connection)/i) ||
                      lower.match(/(?:có|có wifi|have).*?(?:wifi|internet)/i);
   if (wifiPattern) {
@@ -3079,8 +3434,11 @@ const getPatternBasedResponse = async (userMessage, context = {}) => {
       hasRooms: false
     };
   }
+  */
 
-  // Pattern 6.1: Hỏi về lịch sử khách sạn
+  // ⚠️ TEMPORARILY DISABLED FOR AI/RAG TESTING - Pattern 6.1: Hỏi về lịch sử khách sạn
+  // TODO: Re-enable after AI/RAG testing
+  /*
   const historyPattern = lower.match(/(?:lịch sử|history|thành lập|established|khách sạn có từ|bao nhiêu năm)/i) ||
                         lower.match(/(?:khách sạn|hotel).*?(?:thành lập|established|năm nào)/i);
   if (historyPattern) {
@@ -3099,8 +3457,11 @@ const getPatternBasedResponse = async (userMessage, context = {}) => {
       hasRooms: false
     };
   }
+  */
 
-  // Pattern 6.2: Hỏi về chủ khách sạn
+  // ⚠️ TEMPORARILY DISABLED FOR AI/RAG TESTING - Pattern 6.2: Hỏi về chủ khách sạn
+  // TODO: Re-enable after AI/RAG testing
+  /*
   const ownerPattern = lower.match(/(?:chủ khách sạn|owner|chủ sở hữu|người sáng lập|founder|giám đốc)/i) ||
                       lower.match(/(?:ai|who).*?(?:chủ|owner|sáng lập|founder)/i);
   if (ownerPattern) {
@@ -3118,8 +3479,11 @@ const getPatternBasedResponse = async (userMessage, context = {}) => {
       hasRooms: false
     };
   }
+  */
 
-  // Pattern 6.3: Hỏi về tính năng mới
+  // ⚠️ TEMPORARILY DISABLED FOR AI/RAG TESTING - Pattern 6.3: Hỏi về tính năng mới
+  // TODO: Re-enable after AI/RAG testing
+  /*
   const featuresPattern = lower.match(/(?:tính năng|feature|tính năng mới|new feature|công nghệ|technology)/i) ||
                          lower.match(/(?:có|có tính năng|have).*?(?:mới|new|chatbot|ai)/i);
   if (featuresPattern) {
@@ -3142,18 +3506,21 @@ const getPatternBasedResponse = async (userMessage, context = {}) => {
       hasRooms: false
     };
   }
+  */
 
-  // Pattern 6.4: Hỏi về khám phá khách sạn
+  // ⚠️ TEMPORARILY DISABLED FOR AI/RAG TESTING - Pattern 6.4: Hỏi về khám phá khách sạn
+  // TODO: Re-enable after AI/RAG testing
+  /*
   const explorePattern = lower.match(/(?:khám phá|explore|tìm hiểu|giới thiệu|về khách sạn|khách sạn có gì)/i) ||
                         lower.match(/(?:thông tin|information).*?(?:khách sạn|hotel)/i);
   if (explorePattern) {
     return {
       text: 'Khám phá Rayal Park Hotel:\n\n' +
-            '🏨 Khách sạn 5 sao được thành lập năm 2010\n' +
-            '✨ Hơn 14 năm kinh nghiệm phục vụ\n\n' +
+            '🏨 Khách sạn 5 sao được thành lập năm 2015\n' +
+            '✨ Hơn 10 năm kinh nghiệm phục vụ\n\n' +
             'Bạn có thể tìm hiểu về:\n\n' +
             '📜 **Lịch Sử Hình Thành:**\n' +
-            'Hành trình phát triển từ năm 2010 đến nay\n\n' +
+            'Hành trình phát triển từ năm 2015 đến nay\n\n' +
             '👤 **Chủ Khách Sạn:**\n' +
             'Thông tin về người sáng lập và thành tựu\n\n' +
             '✨ **Tính Năng Mới:**\n' +
@@ -3165,6 +3532,7 @@ const getPatternBasedResponse = async (userMessage, context = {}) => {
       hasRooms: false
     };
   }
+  */
 
   // Pattern 1.30: Câu hỏi phức tạp về đặt phòng với nhiều thông tin (gia đình, cuối tuần, view)
   const complexBookingPattern = lower.match(/(?:đặt|muốn|tìm|book).*?phòng.*?(?:cho|for).*?(?:gia đình|family|đoàn|group).*?(\d+)\s*(?:người|people|guests)/i) ||
@@ -3199,7 +3567,9 @@ const getPatternBasedResponse = async (userMessage, context = {}) => {
     };
   }
 
-  // Pattern 1.31: Dịch vụ đặc biệt cho trẻ em
+  // ⚠️ TEMPORARILY DISABLED FOR AI/RAG TESTING - Pattern 1.31: Dịch vụ đặc biệt cho trẻ em
+  // TODO: Re-enable after AI/RAG testing
+  /*
   const childrenServicePattern = lower.match(/(?:dịch vụ|service).*?(?:đặc biệt|special).*?(?:cho|for).*?(?:trẻ em|children|kids|bé)/i) ||
                                 lower.match(/(?:có|có dịch vụ|have).*?(?:dịch vụ|service).*?(?:cho|for).*?(?:trẻ em|children|kids)/i) ||
                                 lower.match(/(?:trẻ em|children|kids).*?(?:dịch vụ|service|tiện ích|amenities)/i);
@@ -3225,6 +3595,7 @@ const getPatternBasedResponse = async (userMessage, context = {}) => {
       hasRooms: false
     };
   }
+  */
 
   // Pattern 1.32: Tổ chức tiệc/sự kiện (mở rộng Pattern 1.25)
   const eventBookingPattern = lower.match(/(?:tổ chức|organize|host).*?(?:tiệc|party|sinh nhật|birthday|anniversary|kỷ niệm|event|sự kiện)/i) ||
@@ -3686,7 +4057,9 @@ const getPatternBasedResponse = async (userMessage, context = {}) => {
     }
   }
 
-  // Pattern 1.46: Câu hỏi về giá dịch vụ cụ thể
+  // ⚠️ TEMPORARILY DISABLED FOR AI/RAG TESTING - Pattern 1.46: Câu hỏi về giá dịch vụ cụ thể
+  // TODO: Re-enable after AI/RAG testing
+  /*
   const servicePricePattern = lower.match(/(?:giá|price|phí|fee).*?(?:massage|spa|đưa đón|transfer|giặt ủi|laundry|gym|bể bơi|pool)/i) ||
                               lower.match(/(?:massage|spa|đưa đón|transfer|giặt ủi|laundry).*?(?:giá|price|phí|fee|bao nhiêu)/i);
   if (servicePricePattern) {
@@ -3716,6 +4089,7 @@ const getPatternBasedResponse = async (userMessage, context = {}) => {
       hasRooms: false
     };
   }
+  */
 
   // Pattern 1.47: Câu hỏi về mã khuyến mãi cụ thể
   const specificPromoPattern = lower.match(/(?:mã|code).*?([A-Z0-9]{4,10}).*?(?:áp dụng|apply|có thể|can|hợp lệ|valid)/i) ||
@@ -3806,7 +4180,9 @@ const getPatternBasedResponse = async (userMessage, context = {}) => {
     };
   }
 
-  // Pattern 1.49: Câu hỏi về tổng chi phí bao gồm dịch vụ
+  // ⚠️ TEMPORARILY DISABLED FOR AI/RAG TESTING - Pattern 1.49: Câu hỏi về tổng chi phí bao gồm dịch vụ
+  // TODO: Re-enable after AI/RAG testing
+  /*
   const totalCostPattern = lower.match(/(?:tổng chi phí|total cost|tổng tiền|total price).*?(?:bao gồm|include|có|has).*?(?:dịch vụ|service)/i) ||
                           lower.match(/(?:chi phí|cost|giá).*?(?:bao gồm|include|có|has).*?(?:tất cả|all|everything)/i) ||
                           lower.match(/(?:tổng|total).*?(?:bao nhiêu|how much|giá|price).*?(?:khi|when|nếu|if)/i);
@@ -3834,6 +4210,7 @@ const getPatternBasedResponse = async (userMessage, context = {}) => {
       hasRooms: false
     };
   }
+  */
 
   // Pattern 1.50: Câu hỏi về giảm giá khi đặt nhiều phòng
   const groupDiscountPattern = lower.match(/(?:đặt|book).*?(\d+)\s*(?:phòng|room).*?(?:giảm giá|discount|ưu đãi)/i) ||
@@ -3905,7 +4282,7 @@ const getPatternBasedResponse = async (userMessage, context = {}) => {
   }
 
   // Pattern 1.52: User xác nhận đặt phòng ("đặt luôn", "ok", "đồng ý", "yes")
-  const confirmBookingPattern = lower.match(/(?:đặt luôn|ok|đồng ý|yes|okay|xác nhận|confirm|đặt phòng này|đặt phòng đó)/i);
+  const confirmBookingPattern = lower.match(/(?:đặt luôn|ok|đồng ý|yes|okay|xác nhận|confirm|đặt phòng này|đặt phòng đó|được|chấp nhận|accept|agree|chấp thuận)/i);
   if (confirmBookingPattern && (context.selectedRoom || context.bookingContext?.roomId)) {
     const bookingContext = context.bookingContext || {};
     const hasPersonalInfo = bookingContext.fullName && bookingContext.email && bookingContext.phone;
@@ -5155,7 +5532,7 @@ const getPatternBasedResponse = async (userMessage, context = {}) => {
             console.log(`✅ Pattern-based: Found ${rooms.length} rooms (no API call)`);
             
             return {
-              text: `Tôi đã tìm thấy ${rooms.length} phòng phù hợp với yêu cầu của bạn. Vui lòng chọn phòng bạn muốn đặt.`,
+              text: `Mình đã tìm được ${rooms.length} phòng phù hợp với yêu cầu của bạn! 😊 Vui lòng chọn phòng bạn muốn đặt (gõ số thứ tự hoặc tên phòng).`,
               rooms: formattedRooms,
               hasRooms: true
             };
@@ -5175,9 +5552,9 @@ const getPatternBasedResponse = async (userMessage, context = {}) => {
     }
   }
   
-  // ==========================================
+  // 
   // PATTERN MỚI: Các trường hợp còn lại để tránh tốn API
-  // ==========================================
+  // 
 
   // Pattern 2.3: Câu hỏi đàm thoại tự nhiên
   const conversationPattern = lower.match(/(?:bạn có thể|can you|có thể|help|giúp|tư vấn|advice)/i) ||
@@ -5367,7 +5744,9 @@ const getPatternBasedResponse = async (userMessage, context = {}) => {
     };
   }
 
-  // Pattern 2.11: Câu hỏi về giá dịch vụ cụ thể (massage, spa)
+  // ⚠️ TEMPORARILY DISABLED FOR AI/RAG TESTING - Pattern 2.11: Câu hỏi về giá dịch vụ cụ thể (massage, spa)
+  // TODO: Re-enable after AI/RAG testing
+  /*
   const specificServicePricePattern = lower.match(/(?:giá|price|phí|fee).*?(?:massage|spa).*?(\d+)\s*(?:phút|minute|min)/i) ||
                                       lower.match(/(?:massage|spa).*?(\d+)\s*(?:phút|minute|min).*?(?:giá|price|phí|fee)/i);
   if (specificServicePricePattern) {
@@ -5393,8 +5772,11 @@ const getPatternBasedResponse = async (userMessage, context = {}) => {
       hasRooms: false
     };
   }
+  */
 
-  // Pattern 2.12: Câu hỏi về dịch vụ spa
+  // ⚠️ TEMPORARILY DISABLED FOR AI/RAG TESTING - Pattern 2.12: Câu hỏi về dịch vụ spa
+  // TODO: Re-enable after AI/RAG testing
+  /*
   const spaServicesPattern = lower.match(/(?:spa|massage).*?(?:có|có dịch vụ|have|services)/i) ||
                             lower.match(/(?:dịch vụ|services).*?(?:spa|massage)/i);
   if (spaServicesPattern) {
@@ -5418,6 +5800,7 @@ const getPatternBasedResponse = async (userMessage, context = {}) => {
       hasRooms: false
     };
   }
+  */
 
   // Pattern 2.13: Câu hỏi về món ăn đặc biệt
   const specialDishPattern = lower.match(/(?:nhà hàng|restaurant).*?(?:có|có món|have|special).*?(?:món|dish|đặc biệt|special)/i) ||
@@ -5463,7 +5846,9 @@ const getPatternBasedResponse = async (userMessage, context = {}) => {
     };
   }
 
-  // Pattern 2.15: Câu hỏi về địa điểm cụ thể gần khách sạn
+  // ⚠️ TEMPORARILY DISABLED FOR AI/RAG TESTING - Pattern 2.15: Câu hỏi về địa điểm cụ thể gần khách sạn
+  // TODO: Re-enable after AI/RAG testing
+  /*
   const specificPlacePattern = lower.match(/(?:nhà hàng|restaurant|chợ|market|bảo tàng|museum|địa điểm|place).*?([A-Za-zÀ-ỹ\s]+).*?(?:gần|near|quanh|around).*?(?:khách sạn|hotel)/i) ||
                                 lower.match(/(?:gần|near|quanh|around).*?(?:khách sạn|hotel).*?(?:có|có nhà hàng|have).*?([A-Za-zÀ-ỹ\s]+)/i);
   if (specificPlacePattern) {
@@ -5482,6 +5867,7 @@ const getPatternBasedResponse = async (userMessage, context = {}) => {
       hasRooms: false
     };
   }
+  */
 
   // Pattern 2.16: Câu hỏi về thời gian đi từ khách sạn đến địa điểm
   const travelTimePattern = lower.match(/(?:đi|go|travel|mất|take).*?(?:từ|from).*?(?:khách sạn|hotel).*?(?:đến|to).*?(?:sân bay|airport|địa điểm|place)/i) ||
@@ -5811,7 +6197,9 @@ const getPatternBasedResponse = async (userMessage, context = {}) => {
     };
   }
 
-  // Pattern 2.31: Câu hỏi về an ninh
+  // ⚠️ TEMPORARILY DISABLED FOR AI/RAG TESTING - Pattern 2.31: Câu hỏi về an ninh
+  // TODO: Re-enable after AI/RAG testing
+  /*
   const securityPattern = lower.match(/(?:an ninh|security|an toàn|safe|bảo vệ|protection)/i) ||
                          lower.match(/(?:có|có an toàn|is safe|secure)/i);
   if (securityPattern) {
@@ -5831,6 +6219,7 @@ const getPatternBasedResponse = async (userMessage, context = {}) => {
       hasRooms: false
     };
   }
+  */
 
   // Pattern 2.32: Câu hỏi về thanh toán bằng ngoại tệ
   const foreignCurrencyPattern = lower.match(/(?:thanh toán|payment|pay).*?(?:ngoại tệ|foreign currency|usd|dollar|euro)/i) ||
@@ -7440,18 +7829,25 @@ const getAIResponse = async (userMessage, context = {}, conversationHistory = []
   }
   
   // ✅ ƯU TIÊN: Pattern-based trước rule-based để trả lời dịch vụ theo config
-  const cachedResponse = getCachedResponse(userMessage);
+  // ⚠️ TEMPORARILY DISABLED FOR RAG TESTING - Cache
+  // TODO: Re-enable after RAG testing
+  /*
+  const cachedResponse = await getCachedResponse(userMessage);
   if (cachedResponse) {
     return cachedResponse;
   }
+  */
 
   const patternBasedResponse = await getPatternBasedResponse(userMessage, context);
   if (patternBasedResponse) {
     console.log('✅ Using pattern-based response (no API call)');
-    setCachedResponse(userMessage, patternBasedResponse);
+    await setCachedResponse(userMessage, patternBasedResponse);
     return patternBasedResponse;
   }
 
+  // ⚠️ TEMPORARILY DISABLED FOR RAG TESTING - Rule-based
+  // TODO: Re-enable after RAG testing
+  /*
   // ✅ Rule-based sau pattern (vẫn không tốn Gemini)
   const language = context.language || 'vi';
   const ruleBasedResponse = getRuleBasedResponse(userMessage, language);
@@ -7464,6 +7860,7 @@ const getAIResponse = async (userMessage, context = {}, conversationHistory = []
       hasRooms: false
     };
   }
+  */
   
   // ✅ GIAI ĐOẠN 1: Kiểm tra rate limit cho user (chỉ áp dụng cho AI calls)
   // ✅ QUAN TRỌNG: Rate limiting chỉ áp dụng cho AI calls, KHÔNG áp dụng cho rule-based và cached
@@ -7538,7 +7935,8 @@ const getAIResponse = async (userMessage, context = {}, conversationHistory = []
     // ✅ THÊM: Nhận diện "tìm phòng X người lớn Y trẻ em", "cần phòng X người lớn Y trẻ em Z tuổi"
     (lowerMessage.match(/(?:tìm|cần|đặt|muốn).*?phòng.*?\d+\s*(?:người lớn|adults?).*?\d+\s*(?:trẻ em|children?)/i)) ||
     (lowerMessage.match(/\d+\s*(?:người lớn|adults?).*?\d+\s*(?:trẻ em|children?).*?\d+\s*tuổi/i)) ||
-    ((lowerMessage.includes("view") || lowerMessage.includes("biển") || lowerMessage.includes("núi")) && !hasRoomList) ||
+    // ✅ SỬA: Chỉ nhận diện "view biển/núi" khi có từ "phòng" trong câu (tìm phòng view biển), không phải hỏi về địa điểm bãi biển/núi
+    ((lowerMessage.includes("phòng") && (lowerMessage.includes("view biển") || lowerMessage.includes("view núi") || lowerMessage.includes("phòng biển") || lowerMessage.includes("phòng núi") || lowerMessage.includes("hướng biển") || lowerMessage.includes("hướng núi"))) && !hasRoomList) ||
     // ✅ Nhận diện cung cấp ngày check-in/out (kể cả có chữ "ngày nhận/ngày trả")
     (lowerMessage.match(/\d{1,2}\/\d{1,2}/) && !hasRoomList) ||
     lowerMessage.includes("ngày nhận") ||
@@ -7877,7 +8275,7 @@ const getAIResponse = async (userMessage, context = {}, conversationHistory = []
       }
       
       // Cache response để tái sử dụng
-      setCachedResponse(userMessage, {
+      await setCachedResponse(userMessage, {
         text: responseText,
         rooms: enrichedRooms,
         hasRooms: true
@@ -7900,6 +8298,7 @@ const getAIResponse = async (userMessage, context = {}, conversationHistory = []
     if (!bookingContext.guests && !bookingContext.maxOccupancy) {
       missing.push("số khách");
     }
+    const hotline = "0901 234 567"; // Hotline mặc định
     const missingText = missing.length
       ? `Vui lòng cung cấp thêm ${missing.join(", ")} để tôi kiểm tra lại.`
       : "Vui lòng đổi khoảng ngày khác hoặc liên hệ hotline để được hỗ trợ.";
@@ -7913,14 +8312,13 @@ const getAIResponse = async (userMessage, context = {}, conversationHistory = []
   // Nếu có Gemini API và đã được khởi tạo thành công, sử dụng nó
   if (geminiAvailable && geminiModel) {
     console.log("[AI Fallback] No rule/cache/pattern/db template matched. Calling Gemini.");
+    // ✅ Khai báo retrievedDocs ở ngoài try block để có thể truy cập trong catch block
+    let retrievedDocs = [];
+    let ragAvailable = false;
+    
     try {
-      // ✅ RAG: DISABLED để tiết kiệm requests/quota
-      // RAG đã được tắt - chỉ dùng prompt thuần để giảm API calls
-      let retrievedDocs = [];
-      let ragAvailable = false;
+      // ✅ RAG: ENABLED với rate limit (50 queries/ngày)
       
-      // RAG DISABLED - Uncomment block below to re-enable RAG
-      /*
       if (ragService) {
         try {
           await ragService.initialize();
@@ -7946,9 +8344,6 @@ const getAIResponse = async (userMessage, context = {}, conversationHistory = []
       } else {
         console.warn('⚠️  RAG Service not available');
       }
-      */
-      
-      console.log('ℹ️  RAG disabled - using prompt-only mode to save API requests');
 
       // Build prompt
       let prompt;
@@ -7970,29 +8365,42 @@ const getAIResponse = async (userMessage, context = {}, conversationHistory = []
         : "⚠️ IMPORTANT: You MUST respond in ENGLISH for this entire response.\n\n";
       
       if (ragAvailable && retrievedDocs.length > 0) {
-        // ✅ Dùng RAG prompt với retrieved context
-        prompt = languageHeader + SYSTEM_PROMPT + "\n\n";
+        // ✅ THÊM: Filter documents có score >= 0.6 (đủ phù hợp)
+        const relevantDocs = retrievedDocs.filter(doc => doc.score >= 0.6);
         
-        // Build RAG context
-        const langLabel = language === 'vi' ? 'THÔNG TIN THAM KHẢO' : 'REFERENCE INFORMATION';
-        const langNote = language === 'vi' 
-          ? 'LƯU Ý: Sử dụng thông tin trên để trả lời câu hỏi. Nếu thông tin không có trong knowledge base, hãy nói rõ và hướng dẫn khách liên hệ hotline.'
-          : 'NOTE: Use the information above to answer the question. If the information is not in the knowledge base, please clarify and guide the customer to contact the hotline.';
+        if (relevantDocs.length > 0) {
+          // ✅ Dùng RAG prompt với retrieved context
+          prompt = languageHeader + SYSTEM_PROMPT + "\n\n";
+          
+          // Build RAG context chỉ với relevant documents
+          const langLabel = language === 'vi' ? 'THÔNG TIN THAM KHẢO' : 'REFERENCE INFORMATION';
+          const langNote = language === 'vi' 
+            ? 'LƯU Ý: Sử dụng thông tin trên để trả lời câu hỏi một cách CHI TIẾT và ĐẦY ĐỦ. Liệt kê tất cả thông tin liên quan từ knowledge base (khoảng cách, thời gian di chuyển, đặc điểm, hoạt động, v.v.). Nếu thông tin không có trong knowledge base, hãy nói rõ và hướng dẫn khách liên hệ hotline.'
+            : 'NOTE: Use the information above to answer the question in DETAIL and COMPLETELY. List all relevant information from the knowledge base (distance, travel time, features, activities, etc.). If the information is not in the knowledge base, please clarify and guide the customer to contact the hotline.';
 
-        prompt += `${langLabel} TỪ KNOWLEDGE BASE:\n`;
-        prompt += "=".repeat(50) + "\n";
+          prompt += `${langLabel} TỪ KNOWLEDGE BASE:\n`;
+          prompt += "=".repeat(50) + "\n";
 
-        retrievedDocs.forEach((doc, index) => {
-          prompt += `\n[Document ${index + 1}]\n`;
-          prompt += `${doc.text}\n`;
-          if (doc.metadata?.source) {
-            prompt += `${language === 'vi' ? 'Nguồn' : 'Source'}: ${doc.metadata.source}\n`;
-          }
-          prompt += "\n";
-        });
+          // ✅ CHỈ đưa relevant documents vào prompt
+          relevantDocs.forEach((doc, index) => {
+            prompt += `\n[Document ${index + 1}]\n`;
+            prompt += `${doc.text}\n`;
+            if (doc.metadata?.source) {
+              prompt += `${language === 'vi' ? 'Nguồn' : 'Source'}: ${doc.metadata.source}\n`;
+            }
+            prompt += "\n";
+          });
 
-        prompt += "=".repeat(50) + "\n\n";
-        prompt += `${langNote}\n\n`;
+          prompt += "=".repeat(50) + "\n\n";
+          prompt += `${langNote}\n\n`;
+          
+          // ✅ Log số documents đã filter
+          console.log(`✅ Filtered RAG documents: ${retrievedDocs.length} → ${relevantDocs.length} (score >= 0.6)`);
+        } else {
+          // ✅ Không có documents phù hợp → Không dùng RAG
+          console.warn('⚠️  RAG documents have low relevance scores (< 0.6), not using RAG');
+          ragAvailable = false;
+        }
         
         // ✅ Thêm context về explore intent (lịch sử, chủ, tính năng, địa điểm)
         if (exploreIntent.type) {
@@ -8533,11 +8941,11 @@ const getAIResponse = async (userMessage, context = {}, conversationHistory = []
           if (exploreIntent.type === 'history') {
             exploreContextText = language === 'vi'
               ? `Khách hàng đang hỏi về lịch sử hình thành khách sạn.\n` +
-                `Rayal Park Hotel được thành lập vào năm 2010 với tầm nhìn trở thành điểm đến nghỉ dưỡng hàng đầu tại Việt Nam.\n\n` +
+                `Rayal Park Hotel được thành lập vào năm 2015 với tầm nhìn trở thành điểm đến nghỉ dưỡng hàng đầu tại Việt Nam.\n\n` +
                 `Timeline chi tiết:\n` +
-                `- Năm 2010: Khởi Nghiệp - Từ một dự án nhỏ với 20 phòng đầu tiên\n` +
-                `- Năm 2015: Mở Rộng Quy Mô - Lên 50 phòng cao cấp, đạt tiêu chuẩn 4 sao và nhận được nhiều giải thưởng về chất lượng dịch vụ\n` +
-                `- Năm 2020: Đạt Tiêu Chuẩn 5 Sao - Sau 10 năm phát triển, chính thức đạt tiêu chuẩn 5 sao quốc tế\n` +
+                `- Năm 2015: Khởi Nghiệp - Từ một dự án nhỏ với 20 phòng đầu tiên\n` +
+                `- Năm 2018: Mở Rộng Quy Mô - Lên 50 phòng cao cấp, đạt tiêu chuẩn 4 sao và nhận được nhiều giải thưởng về chất lượng dịch vụ\n` +
+                `- Năm 2020: Đạt Tiêu Chuẩn 5 Sao - Sau 5 năm phát triển, chính thức đạt tiêu chuẩn 5 sao quốc tế\n` +
                 `- Năm 2024: Hiện Tại & Tương Lai - Tiếp tục đổi mới, hướng tới mục tiêu trở thành khách sạn hàng đầu khu vực Đông Nam Á\n\n` +
                 `Thành tựu nổi bật:\n` +
                 `- Giải thưởng "Khách sạn tốt nhất năm 2023"\n` +
@@ -8545,11 +8953,11 @@ const getAIResponse = async (userMessage, context = {}, conversationHistory = []
                 `- Top 10 khách sạn hàng đầu Việt Nam\n\n` +
                 `Bạn PHẢI trả lời chi tiết về lịch sử hình thành. Luôn gợi ý khách xem phần 'Khám Phá Ngay' trên trang chủ để có thông tin đầy đủ hơn.`
               : `Customer is asking about hotel history.\n` +
-                `Rayal Park Hotel was founded in 2010 with the vision of becoming a leading resort destination in Vietnam.\n\n` +
+                `Rayal Park Hotel was founded in 2015 with the vision of becoming a leading resort destination in Vietnam.\n\n` +
                 `Detailed timeline:\n` +
-                `- 2010: Startup - Started as a small project with 20 rooms\n` +
-                `- 2015: Expansion - Expanded to 50 premium rooms, achieved 4-star standard and received many awards for service quality\n` +
-                `- 2020: Achieved 5-Star Standard - After 10 years of development, officially achieved international 5-star standard\n` +
+                `- 2015: Startup - Started as a small project with 20 rooms\n` +
+                `- 2018: Expansion - Expanded to 50 premium rooms, achieved 4-star standard and received many awards for service quality\n` +
+                `- 2020: Achieved 5-Star Standard - After 5 years of development, officially achieved international 5-star standard\n` +
                 `- 2024: Present & Future - Continue to innovate, aiming to become a leading hotel in Southeast Asia\n\n` +
                 `Outstanding achievements:\n` +
                 `- "Best Hotel 2023" award\n` +
@@ -8561,7 +8969,7 @@ const getAIResponse = async (userMessage, context = {}, conversationHistory = []
               ? `Khách hàng đang hỏi về chủ khách sạn.\n` +
                 `Chủ tịch & Nhà sáng lập Rayal Park Hotel là Nguyễn Văn A, một doanh nhân thành đạt với hơn 20 năm kinh nghiệm trong ngành khách sạn và du lịch.\n\n` +
                 `Tiểu sử:\n` +
-                `- Với tầm nhìn xa và đam mê mang đến trải nghiệm nghỉ dưỡng đẳng cấp, ông đã sáng lập Rayal Park Hotel vào năm 2010\n` +
+                `- Với tầm nhìn xa và đam mê mang đến trải nghiệm nghỉ dưỡng đẳng cấp, ông đã sáng lập Rayal Park Hotel vào năm 2015\n` +
                 `- Dưới sự lãnh đạo của ông, khách sạn đã phát triển từ một dự án nhỏ trở thành một trong những khách sạn 5 sao hàng đầu tại Việt Nam\n` +
                 `- Ông luôn đặt khách hàng làm trung tâm và cam kết mang đến dịch vụ hoàn hảo nhất cho mọi du khách\n\n` +
                 `Thành tựu nổi bật:\n` +
@@ -8574,7 +8982,7 @@ const getAIResponse = async (userMessage, context = {}, conversationHistory = []
               : `Customer is asking about hotel owner.\n` +
                 `President & Founder of Rayal Park Hotel is Nguyễn Văn A, a successful entrepreneur with over 20 years of experience in hospitality and tourism.\n\n` +
                 `Biography:\n` +
-                `- With vision and passion for delivering premium resort experiences, he founded Rayal Park Hotel in 2010\n` +
+                `- With vision and passion for delivering premium resort experiences, he founded Rayal Park Hotel in 2015\n` +
                 `- Under his leadership, the hotel has grown from a small project to one of the leading 5-star hotels in Vietnam\n` +
                 `- He always puts customers at the center and commits to providing the best service for every guest\n\n` +
                 `Outstanding achievements:\n` +
@@ -8687,17 +9095,17 @@ const getAIResponse = async (userMessage, context = {}, conversationHistory = []
           } else if (exploreIntent.type === 'explore_general') {
             exploreContextText = language === 'vi'
               ? `Khách hàng đang hỏi tổng hợp về khách sạn (khám phá).\n` +
-                `Rayal Park Hotel là khách sạn 5 sao được thành lập năm 2010, với hơn 14 năm kinh nghiệm phục vụ khách hàng.\n\n` +
+                `Rayal Park Hotel là khách sạn 5 sao được thành lập năm 2015, với hơn 10 năm kinh nghiệm phục vụ khách hàng.\n\n` +
                 `Bạn có thể tìm hiểu về:\n` +
-                `- 📜 Lịch Sử Hình Thành: Hành trình phát triển từ 2010 đến nay\n` +
+                `- 📜 Lịch Sử Hình Thành: Hành trình phát triển từ 2015 đến nay\n` +
                 `- 👤 Chủ Khách Sạn: Thông tin về người sáng lập và triết lý kinh doanh\n` +
                 `- ✨ Tính Năng Mới: 6 tính năng công nghệ mới nhất\n` +
                 `- 📍 Địa Điểm Gần: Các điểm tham quan, nhà hàng, mua sắm xung quanh\n\n` +
                 `Bạn PHẢI giới thiệu tổng quan và đề xuất 4 chủ đề trên. Hướng dẫn khách click vào [Khám Phá Ngay](explore) trên trang chủ để xem đầy đủ thông tin.`
               : `Customer is asking general questions about the hotel (explore).\n` +
-                `Rayal Park Hotel is a 5-star hotel founded in 2010, with over 14 years of experience serving customers.\n\n` +
+                `Rayal Park Hotel is a 5-star hotel founded in 2015, with over 10 years of experience serving customers.\n\n` +
                 `You can learn about:\n` +
-                `- 📜 Hotel History: Development journey from 2010 to present\n` +
+                `- 📜 Hotel History: Development journey from 2015 to present\n` +
                 `- 👤 Hotel Owner: Information about the founder and business philosophy\n` +
                 `- ✨ New Features: 6 latest technology features\n` +
                 `- 📍 Nearby Places: Attractions, restaurants, shopping around\n\n` +
@@ -9428,7 +9836,7 @@ const getAIResponse = async (userMessage, context = {}, conversationHistory = []
       // ✅ THÊM: Cache AI response để tái sử dụng (chỉ cache nếu không có rooms hoặc rooms ít)
       // Không cache responses có nhiều rooms vì có thể thay đổi theo thời gian
       if (!aiResponse.hasRooms || (aiResponse.rooms && aiResponse.rooms.length <= 3)) {
-        setCachedResponse(userMessage, aiResponse);
+        await setCachedResponse(userMessage, aiResponse);
       }
       
       return aiResponse;
@@ -9450,6 +9858,154 @@ const getAIResponse = async (userMessage, context = {}, conversationHistory = []
       
       console.error("Gemini API Error:", error.message || error);
 
+      // ✅ CẢI THIỆN: Nếu RAG đã retrieve được documents, sử dụng chúng để trả lời thay vì fallback chung chung
+      if (retrievedDocs && retrievedDocs.length > 0) {
+        console.log('✅ Using RAG documents as fallback response (Gemini API failed)');
+        const language = context.language || 'vi';
+        
+        // ✅ Kiểm tra score - chỉ dùng document có score >= 0.6 (đủ phù hợp)
+        const relevantDocs = retrievedDocs.filter(doc => doc.score >= 0.6);
+        
+        if (relevantDocs.length === 0) {
+          console.warn('⚠️  RAG documents have low relevance scores (< 0.6), using general fallback');
+          // Fall through to general fallback below
+        } else {
+          // ✅ Extract keywords từ user message để tìm đoạn text liên quan
+          const userLower = userMessage.toLowerCase();
+          const keywords = [];
+          if (userLower.includes('đặc biệt') || userLower.includes('special') || userLower.includes('unique')) keywords.push('đặc biệt', 'tính năng', 'nổi bật');
+          if (userLower.includes('tính năng') || userLower.includes('feature')) keywords.push('tính năng', 'công nghệ');
+          if (userLower.includes('dịch vụ') || userLower.includes('service')) keywords.push('dịch vụ', 'service');
+          if (userLower.includes('có gì') || userLower.includes('what')) keywords.push('tính năng', 'dịch vụ', 'đặc biệt');
+          
+          let ragResponse = '';
+          
+          // ✅ Nếu câu hỏi về "đặc biệt" hoặc "có gì", trả về thông tin về 6 tính năng nổi bật
+          const isAboutSpecialFeatures = userLower.includes('đặc biệt') || 
+                                        userLower.includes('có gì') || 
+                                        userLower.includes('what') ||
+                                        userLower.includes('special') ||
+                                        userLower.includes('unique') ||
+                                        userLower.includes('nổi bật');
+          
+          // ✅ Tìm document về "Tính Năng Mới" hoặc "đặc biệt" nếu có
+          const featuresDoc = relevantDocs.find(doc => 
+            doc.text.toLowerCase().includes('tính năng mới') || 
+            doc.text.toLowerCase().includes('tính năng nổi bật') ||
+            doc.text.toLowerCase().includes('6 tính năng') ||
+            doc.text.toLowerCase().includes('chatbot ai') ||
+            doc.metadata?.source?.includes('chatbot-scenarios')
+          );
+          
+          if (isAboutSpecialFeatures) {
+            // ✅ Format response về tính năng đặc biệt
+            ragResponse = language === 'vi'
+              ? '✨ **Rayal Park Hotel có những điểm đặc biệt sau:**\n\n'
+              : '✨ **Rayal Park Hotel has the following special features:**\n\n';
+            
+            // ✅ Trả về thông tin về 6 tính năng nổi bật (hardcoded từ knowledge-base)
+            if (language === 'vi') {
+              ragResponse += 'Rayal Park Hotel đã triển khai nhiều tính năng mới để nâng cao trải nghiệm khách hàng. Dưới đây là **6 tính năng nổi bật nhất:**\n\n';
+              
+              ragResponse += '1. **Chatbot AI Thông Minh** 🤖\n';
+              ragResponse += '   Trải nghiệm dịch vụ hỗ trợ 24/7 với chatbot AI thông minh. Đặt phòng, tìm hiểu dịch vụ, hoặc nhận tư vấn ngay lập tức qua chat trực tuyến. Hỗ trợ đa ngôn ngữ (Tiếng Việt & Tiếng Anh). Bạn đang sử dụng tính năng này ngay bây giờ! 😊\n\n';
+              
+              ragResponse += '2. **Đặt Phòng Tức Thì** ⚡\n';
+              ragResponse += '   Đặt phòng ngay từ chat, không cần rời khỏi trang web. Hệ thống tự động kiểm tra phòng trống và xác nhận đặt phòng trong vài giây. Xác nhận tức thời, thanh toán linh hoạt.\n\n';
+              
+              ragResponse += '3. **Đồng Bộ Lịch Google** 📅\n';
+              ragResponse += '   Tự động thêm lịch đặt phòng vào Google Calendar của bạn. Nhận nhắc nhở và quản lý lịch trình một cách tiện lợi. Tính năng này hoạt động tự động khi bạn đặt phòng thành công.\n\n';
+              
+              ragResponse += '4. **Quản Lý Booking Trực Tuyến** 💼\n';
+              ragResponse += '   Xem, chỉnh sửa hoặc hủy đặt phòng của bạn mọi lúc, mọi nơi. Tải hóa đơn, xem chi tiết và quản lý tất cả booking trong một nơi. Chỉnh sửa dễ dàng, hủy phòng linh hoạt.\n\n';
+              
+              ragResponse += '5. **Thanh Toán Đa Phương Thức** 💳\n';
+              ragResponse += '   Hỗ trợ nhiều phương thức thanh toán: thẻ tín dụng, chuyển khoản ngân hàng, hoặc thanh toán tại khách sạn. An toàn và tiện lợi. Bảo mật cao, thanh toán nhanh chóng.\n\n';
+              
+              ragResponse += '6. **Gợi Ý Địa Điểm Gần** 🗺️\n';
+              ragResponse += '   Khám phá các địa điểm tham quan, nhà hàng, mua sắm gần khách sạn. Tìm hiểu khoảng cách và thời gian di chuyển để lên kế hoạch hoàn hảo. Thông tin chi tiết, bản đồ trực quan.\n\n';
+            } else {
+              ragResponse += 'Rayal Park Hotel has implemented many new features to enhance customer experience. Here are the **6 most outstanding features:**\n\n';
+              
+              ragResponse += '1. **Smart AI Chatbot** 🤖\n';
+              ragResponse += '   Experience 24/7 support service with smart AI chatbot. Book rooms, learn about services, or get instant advice via online chat. Multilingual support (Vietnamese & English). You are using this feature right now! 😊\n\n';
+              
+              ragResponse += '2. **Instant Booking** ⚡\n';
+              ragResponse += '   Book rooms directly from chat, no need to leave the website. System automatically checks room availability and confirms booking in seconds. Instant confirmation, flexible payment.\n\n';
+              
+              ragResponse += '3. **Google Calendar Sync** 📅\n';
+              ragResponse += '   Automatically add booking to your Google Calendar. Receive reminders and manage schedule conveniently. This feature works automatically when you successfully book.\n\n';
+              
+              ragResponse += '4. **Online Booking Management** 💼\n';
+              ragResponse += '   View, edit or cancel your bookings anytime, anywhere. Download invoices, view details and manage all bookings in one place. Easy editing, flexible cancellation.\n\n';
+              
+              ragResponse += '5. **Multi-Payment Methods** 💳\n';
+              ragResponse += '   Support multiple payment methods: credit card, bank transfer, or payment at hotel. Safe and convenient. High security, fast payment.\n\n';
+              
+              ragResponse += '6. **Nearby Places Suggestions** 🗺️\n';
+              ragResponse += '   Explore attractions, restaurants, shopping near the hotel. Learn about distance and travel time to plan perfectly. Detailed information, visual maps.\n\n';
+            }
+            
+            ragResponse += language === 'vi'
+              ? '💡 Bạn muốn tìm hiểu chi tiết về tính năng nào? Hoặc xem thêm tại [Khám Phá Ngay](explore) trên trang chủ.\n\n'
+              : '💡 Would you like to know more details about any feature? Or view more at [Explore Now](explore) on the homepage.\n\n';
+          } else {
+            // ✅ Nếu không phải về tính năng, format document thông thường nhưng có chọn lọc
+            ragResponse = language === 'vi'
+              ? 'Dựa trên thông tin từ hệ thống:\n\n'
+              : 'Based on information from our system:\n\n';
+            
+            // Lấy top document có score cao nhất
+            const topDoc = relevantDocs[0];
+            const docText = topDoc.text;
+            
+            // Tìm đoạn text liên quan đến keywords (nếu có)
+            if (keywords.length > 0) {
+              let relevantText = '';
+              keywords.forEach(keyword => {
+                const keywordIndex = docText.toLowerCase().indexOf(keyword.toLowerCase());
+                if (keywordIndex !== -1) {
+                  const start = Math.max(0, keywordIndex - 100);
+                  const end = Math.min(docText.length, keywordIndex + 400);
+                  const snippet = docText.substring(start, end);
+                  if (!relevantText.includes(snippet)) {
+                    relevantText += snippet + '\n\n';
+                  }
+                }
+              });
+              
+              if (relevantText.length > 50) {
+                ragResponse += relevantText;
+              } else {
+                // Fallback: dùng đầu document
+                ragResponse += docText.substring(0, 600) + '...\n\n';
+              }
+            } else {
+              // Không có keywords, dùng đầu document
+              ragResponse += docText.substring(0, 600) + '...\n\n';
+            }
+            
+            ragResponse += language === 'vi'
+              ? 'Bạn có muốn tìm hiểu thêm không? Hoặc xem thêm tại [Khám Phá Ngay](explore) trên trang chủ.\n\n'
+              : 'Would you like to know more? Or view more at [Explore Now](explore) on the homepage.\n\n';
+          }
+          
+          // Thêm thông báo về quota nếu là lỗi 429
+          const errorMessage = error.message || error.toString() || '';
+          if (errorMessage.includes('429') || errorMessage.includes('quota') || errorMessage.includes('Too Many Requests')) {
+            ragResponse += language === 'vi'
+              ? '⚠️ Lưu ý: Hệ thống đang tạm thời giới hạn số lượng yêu cầu. Để được hỗ trợ tốt hơn, vui lòng liên hệ hotline: 0901 234 567\n\n'
+              : '⚠️ Note: The system is temporarily limiting the number of requests. For better support, please contact hotline: 0901 234 567\n\n';
+          }
+          
+          return {
+            text: ragResponse.trim(),
+            rooms: null,
+            hasRooms: false
+          };
+        }
+      }
+
       // 🚫 Không bịa danh sách phòng khi tìm theo ngày/khách mà không có dữ liệu thật
       if (isRoomSearchRequest && (!roomSearchResults || roomSearchResults.length === 0)) {
         return {
@@ -9459,12 +10015,12 @@ const getAIResponse = async (userMessage, context = {}, conversationHistory = []
         };
       }
 
-      // Fallback to mock nếu có lỗi
+      // Fallback to mock nếu có lỗi và không có RAG documents
       const mockResponse = getMockAIResponse(userMessage);
       if (roomSearchResults && roomSearchResults.length > 0) {
         // Response ngắn gọn khi có phòng
         const shortResponse = isRoomSearchRequest 
-          ? `Tôi đã tìm thấy ${roomSearchResults.length} phòng phù hợp với yêu cầu của bạn:`
+          ? `Mình đã tìm được ${roomSearchResults.length} phòng phù hợp với yêu cầu của bạn! 😊`
           : mockResponse;
         
         return {
@@ -9493,6 +10049,7 @@ if (isRoomSearchRequest && (!roomSearchResults || roomSearchResults.length === 0
     moreInfoNeeded.push("số khách");
   }
 
+  const hotline = "0901 234 567"; // Hotline mặc định
   const missingText = moreInfoNeeded.length
     ? `Vui lòng cung cấp thêm ${moreInfoNeeded.join(", ")} để tôi kiểm tra lại.`
     : "Vui lòng kiểm tra lại ngày hoặc chọn khoảng ngày khác, hoặc liên hệ hotline.";
@@ -9509,7 +10066,7 @@ const mockResponse = getMockAIResponse(userMessage);
   // Nếu có room search results, thêm vào response
   if (roomSearchResults && roomSearchResults.length > 0) {
     let responseText = mockResponse + "\n\n";
-    responseText += "📋 Tôi đã tìm thấy các phòng phù hợp với yêu cầu của bạn:\n\n";
+    responseText += "📋 Mình đã tìm được các phòng phù hợp với yêu cầu của bạn:\n\n";
     roomSearchResults.forEach((room, index) => {
       responseText += `${index + 1}. ${room.name} - ${room.roomType}\n`;
       responseText += `   💰 Giá: ${room.pricePerNight.toLocaleString('vi-VN')} VNĐ/đêm\n`;
@@ -10877,11 +11434,20 @@ export const chatWithAI = asyncHandler(async (req, res) => {
       const hasExistingRoomList = session.context?.lastRoomSearchResults && session.context.lastRoomSearchResults.length > 1;
       const isSingleRoomResponse = rooms.length === 1;
       
+      // ✅ Kiểm tra xem có phải là amenities response không (response chỉ có 1 phòng và phòng đó là phòng đã chọn)
+      // Nếu response chỉ có 1 phòng VÀ có selectedRoom VÀ phòng đó match với selectedRoom → có thể là amenities response
+      const selectedRoomId = context.selectedRoom?._id || context.selectedRoom?.id;
+      const isAmenitiesResponse = isSingleRoomResponse && 
+                                  selectedRoomId && 
+                                  hasExistingRoomList &&
+                                  !isSelectingRoom &&
+                                  rooms[0]?._id?.toString() === selectedRoomId.toString();
+      
       // ✅ Chỉ cập nhật lastRoomSearchResults nếu:
-      //   - Không phải là chọn phòng từ list (là tìm phòng mới)
-      //   - Hoặc là list phòng mới (nhiều hơn 1 phòng)
-      //   - Hoặc chưa có list phòng ban đầu
-      if (!isSelectingRoom || !hasExistingRoomList || !isSingleRoomResponse) {
+      //   - KHÔNG phải amenities response (nếu hỏi amenities, giữ nguyên list ban đầu)
+      //   - VÀ (không phải là chọn phòng từ list HOẶC không có list ban đầu HOẶC response có nhiều phòng)
+      // ✅ QUAN TRỌNG: Nếu user hỏi amenities, KHÔNG cập nhật lastRoomSearchResults để giữ nguyên list 6 phòng
+      if (!isAmenitiesResponse && (!isSelectingRoom || !hasExistingRoomList || !isSingleRoomResponse)) {
         // ✅ QUAN TRỌNG: Log thứ tự rooms trước khi lưu để debug
         console.log(`📋 Saving lastRoomSearchResults with order:`, {
           count: rooms.length,
@@ -10929,14 +11495,73 @@ export const chatWithAI = asyncHandler(async (req, res) => {
           count: verifySession?.context?.lastRoomSearchResults?.length || 0,
           contextKeys: verifySession?.context ? Object.keys(verifySession.context) : []
         });
+        
+        // ✅ QUAN TRỌNG: Nếu có select_room action và lastRoomSearchResults đã được cập nhật, trigger lại logic select_room
+        if (bookingIntent?.action === 'select_room' && bookingIntent.roomNumber && 
+            context.lastRoomSearchResults && context.lastRoomSearchResults.length > 0) {
+          const selectedRoomIndex = bookingIntent.roomNumber - 1;
+          if (selectedRoomIndex >= 0 && selectedRoomIndex < context.lastRoomSearchResults.length) {
+            const selectedRoom = context.lastRoomSearchResults[selectedRoomIndex];
+            console.log(`🔄 Re-triggering select_room after pattern-based update:`, {
+              roomNumber: bookingIntent.roomNumber,
+              selectedRoomName: selectedRoom.name,
+              selectedRoomId: selectedRoom._id
+            });
+            
+            // Cập nhật context.selectedRoom và bookingContext
+            context.selectedRoom = {
+              _id: selectedRoom._id.toString(),
+              id: selectedRoom._id.toString(),
+              name: selectedRoom.name,
+              pricePerNight: selectedRoom.pricePerNight,
+              roomType: selectedRoom.roomType,
+              maxOccupancy: selectedRoom.maxOccupancy,
+              view: selectedRoom.view || 'N/A',
+              image: selectedRoom.image || selectedRoom.thumbnailUrl || null,
+              thumbnailUrl: selectedRoom.thumbnailUrl || selectedRoom.image || null,
+              amenities: Array.isArray(selectedRoom.amenities) ? selectedRoom.amenities : []
+            };
+            
+            bookingContext.roomId = selectedRoom._id.toString();
+            bookingContext.roomName = selectedRoom.name;
+            bookingContext.roomPrice = selectedRoom.pricePerNight;
+            
+            // Lưu vào session
+            if (session) {
+              session.context.selectedRoom = context.selectedRoom;
+              session.context.bookingContext = bookingContext;
+              session.markModified('context');
+              await session.save();
+              console.log(`✅ Re-saved selectedRoom after pattern-based update: ${context.selectedRoom.name}`);
+            }
+            
+            // Cập nhật roomsData để hiển thị card phòng đã chọn
+            roomsData = [{
+              id: selectedRoom._id.toString(),
+              name: selectedRoom.name,
+              roomType: selectedRoom.roomType || 'Standard',
+              pricePerNight: selectedRoom.pricePerNight || 0,
+              maxOccupancy: selectedRoom.maxOccupancy || 2,
+              view: selectedRoom.view || 'N/A',
+              image: selectedRoom.image || selectedRoom.thumbnailUrl || '',
+              amenities: Array.isArray(selectedRoom.amenities) ? selectedRoom.amenities : []
+            }];
+            hasRooms = true;
+          }
+        }
       } else {
         // ✅ Giữ nguyên list phòng ban đầu, không cập nhật
-        console.log('ℹ️ Skipping lastRoomSearchResults update - user is selecting room from existing list, keeping original list', {
+        const skipReason = isAmenitiesResponse ? 'amenities response' : 
+                          (isSelectingRoom ? 'selecting room from existing list' : 'other');
+        console.log(`ℹ️ Skipping lastRoomSearchResults update - ${skipReason}, keeping original list`, {
           isSelectingRoom,
+          isAmenitiesResponse,
           hasExistingRoomList,
           existingListCount: session.context.lastRoomSearchResults.length,
           isSingleRoomResponse,
-          newRoomsCount: rooms.length
+          newRoomsCount: rooms.length,
+          selectedRoomId: selectedRoomId?.toString(),
+          responseRoomId: rooms[0]?._id?.toString()
         });
         // ✅ Đảm bảo context.lastRoomSearchResults vẫn có giá trị từ session
         if (!context.lastRoomSearchResults && session.context.lastRoomSearchResults) {
@@ -11932,10 +12557,23 @@ export const chatWithAI = asyncHandler(async (req, res) => {
     
     // ✅ Nếu user vừa chọn phòng, ưu tiên thông điệp xác nhận chọn phòng (không lặp lại tìm phòng)
     if (bookingIntent?.action === 'select_room' && context.selectedRoom) {
-      finalResponseText = context.language === 'en'
-        ? `You selected **${context.selectedRoom.name}**. If you want to change rooms, say "show all available rooms". To change dates, say "change date ...". Please share check-in/check-out dates and your contact info to proceed.`
-        : `Bạn đã chọn  **${context.selectedRoom.name}** phòng đã sẵn sàng 😊 
-Bạn chỉ cần nhấn “Đặt phòng ngay” trên thẻ phòng hoặc nhập ngày nhận – ngày trả và số khách, sau đó cung cấp trực tiếp họ và tên, email, số điện thoại để mình tạo link đặt phòng và hỗ trợ hoàn tất nhanh chóng cho bạn nhé.`;
+      const hasDates =
+        context.bookingContext &&
+        context.bookingContext.checkInDate &&
+        context.bookingContext.checkOutDate;
+
+      if (context.language === 'en') {
+        finalResponseText = `You selected **${context.selectedRoom.name}**. 
+Just click the \"Book now\" button on the room card. 
+To help you complete the booking faster, please share your **full name, email, and phone number** and our staff will assist you.`;
+      } else {
+        finalResponseText = hasDates
+          ? `Bạn đã chọn **${context.selectedRoom.name}**, phòng đã sẵn sàng 😊
+Bạn chỉ cần nhấn nút \"Đặt phòng ngay\" trên thẻ phòng.
+Nếu muốn mình hỗ trợ giữ phòng và hoàn tất đặt chỗ nhanh hơn, hãy gửi giúp mình **Họ và tên, email, số điện thoại** nhé.`
+          : `Bạn đã chọn **${context.selectedRoom.name}** 😊
+Để mình kiểm tra và giữ phòng cho bạn, vui lòng cho mình **ngày nhận – ngày trả** và **số khách**, sau đó gửi thêm **Họ và tên, email, số điện thoại** để mình tạo link đặt phòng và hỗ trợ bạn hoàn tất nhé.`;
+      }
 
       if (finalRoomsData && finalRoomsData.length > 0) {
         // Giữ lại card đã có (đã được filter về phòng đang xem ở trên)
