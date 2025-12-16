@@ -22,7 +22,9 @@ export const createRoom = asyncHandler(async (req, res) => {
       available,
       isAvailable,
       amenities,
-      image
+      image,
+      includedServices,
+      paidServices
     } = req.body;
 
     // Validation
@@ -75,6 +77,8 @@ export const createRoom = asyncHandler(async (req, res) => {
       available: available !== undefined ? available : true,
       isAvailable: isAvailable || 1,
       amenities: amenities || [],
+      includedServices: includedServices || [],
+      paidServices: paidServices || [],
       image: image || 'https://images.unsplash.com/photo-1631049307264-da0ec9d70304?w=500&h=300&fit=crop',
       location: defaultLocation._id
     });

@@ -810,6 +810,26 @@ const parseBookingIntent = (userMessage, context = {}) => {
       intent.action = 'confirm_booking';
       intent.confirmBooking = true;
     }
+  } else if (
+    !isChangingRoom &&
+    !intent.action &&
+    !context.selectedRoom &&
+    !context.bookingContext?.roomId &&
+    Array.isArray(context.lastRoomSearchResults) &&
+    context.lastRoomSearchResults.length === 1 &&
+    (
+      lowerMessage.trim() === "có" ||
+      lowerMessage.includes("ok") ||
+      lowerMessage.includes("okay") ||
+      lowerMessage.includes("đồng ý") ||
+      lowerMessage.includes("yes") ||
+      lowerMessage.includes("lấy phòng") ||
+      lowerMessage.includes("chốt")
+    )
+  ) {
+    // Nếu chỉ còn 1 phòng trong list và user trả lời đồng ý, tự chọn phòng #1
+    intent.action = 'select_room';
+    intent.roomNumber = 1;
   }
   
   // ✅ Parse thông tin cá nhân (tên, email, số điện thoại)
@@ -2000,6 +2020,10 @@ const getPatternBasedResponse = async (userMessage, context = {}) => {
   }
 
   // ✅ PRIORITY: Nếu user muốn xem tiện ích/dịch vụ của phòng đã chọn, load từ DB và trả về thông tin thật
+  const breakfastKeywords = ["buffet sáng", "ăn sáng", "breakfast"];
+  const shuttleKeywords = ["đưa đón", "đưa rước", "airport", "sân bay", "shuttle", "đón tiễn"];
+  const matchesAny = (arr) => arr.some(k => lower.includes(k));
+
   const isViewRoomAmenitiesIntent = (
     (lower.includes("tiện ích") || lower.includes("amenities") || lower.includes("dịch vụ")) &&
     (lower.includes("phòng này") || lower.includes("phòng đó") || lower.includes("phòng đã chọn") || hasSelectedRoom)
@@ -2008,7 +2032,8 @@ const getPatternBasedResponse = async (userMessage, context = {}) => {
     lower.includes("dịch vụ phòng") ||
     lower.includes("phòng này có gì") ||
     lower.includes("phòng đó có gì") ||
-    (lower.includes("xem") && lower.includes("chi tiết") && (lower.includes("phòng này") || lower.includes("phòng đó") || hasSelectedRoom))
+    (lower.includes("xem") && lower.includes("chi tiết") && (lower.includes("phòng này") || lower.includes("phòng đó") || hasSelectedRoom)) ||
+    ((hasSelectedRoom || lower.includes("phòng")) && (matchesAny(breakfastKeywords) || matchesAny(shuttleKeywords)))
   );
 
   if (isViewRoomAmenitiesIntent && hasSelectedRoom) {
@@ -2088,6 +2113,77 @@ const getPatternBasedResponse = async (userMessage, context = {}) => {
             roomName: updatedSelectedRoom.name,
             amenitiesCount: updatedSelectedRoom.amenities.length
           });
+
+          // ✅ Trả lời dịch vụ cụ thể theo PHÒNG (ưu tiên dữ liệu phòng, fallback hotelInfo)
+          const included = Array.isArray(dbRoom.includedServices) ? dbRoom.includedServices : [];
+          const paid = Array.isArray(dbRoom.paidServices) ? dbRoom.paidServices : [];
+          const hasIncluded = (key) => included.includes(key);
+          const findPaid = (key) => paid.find(p => p?.key === key);
+          const serviceCfg = hotelInfo?.services || {};
+          const matchesKeywords = (keywords) => keywords.some(k => lower.includes(k));
+
+          const breakfastKeywords = ["buffet sáng", "ăn sáng", "breakfast", "suất sáng"];
+          const shuttleKeywords = ["đưa đón", "đưa rước", "airport", "sân bay", "shuttle", "đón tiễn"];
+
+          // Buffet sáng theo phòng
+          if (matchesKeywords(breakfastKeywords)) {
+            const hotelBf = serviceCfg.restaurant || {};
+            const hotelBfNote = hotelInfo?.localInfo?.breakfast || hotelBf.notes || hotelBf.priceRange || '';
+            const paidBreakfast = findPaid('breakfast');
+
+            if (hasIncluded('breakfast')) {
+              return {
+                text: `Phòng này **đã bao gồm buffet sáng miễn phí**${hotelBfNote ? ` (${hotelBfNote})` : ""}.`,
+                rooms: null,
+                hasRooms: false
+              };
+            }
+
+            if (paidBreakfast || hotelBf?.enabled) {
+              const price = paidBreakfast?.priceNote || hotelBf?.priceRange;
+              return {
+                text: `Phòng này **chưa bao gồm buffet sáng**. Bạn có thể mua thêm${price ? ` với giá ${price}` : ""}${hotelBfNote && !price ? ` (${hotelBfNote})` : ""}.`,
+                rooms: null,
+                hasRooms: false
+              };
+            }
+
+            return {
+              text: `Hiện chưa có thông tin buffet sáng cho phòng này. Vui lòng liên hệ lễ tân để được hỗ trợ thêm.`,
+              rooms: null,
+              hasRooms: false
+            };
+          }
+
+          // Đưa đón sân bay theo phòng
+          if (matchesKeywords(shuttleKeywords)) {
+            const hotelShuttle = serviceCfg.airportPickup || {};
+            const paidShuttle = findPaid('airportPickup');
+
+            if (hasIncluded('airportPickup')) {
+              return {
+                text: `Phòng này **đã bao gồm dịch vụ đưa đón sân bay miễn phí**. Vui lòng cho mình biết giờ/điểm đón để đặt xe.`,
+                rooms: null,
+                hasRooms: false
+              };
+            }
+
+            if (paidShuttle || hotelShuttle?.enabled) {
+              const price = paidShuttle?.priceNote || hotelShuttle?.priceRange;
+              const note = paidShuttle?.notes || hotelShuttle?.notes;
+              return {
+                text: `Phòng này **chưa bao gồm đưa đón sân bay**. Bạn có thể đặt thêm${price ? ` với giá ${price}` : ""}${note ? ` (${note})` : ""}.`,
+                rooms: null,
+                hasRooms: false
+              };
+            }
+
+            return {
+              text: `Hiện chưa có dịch vụ đưa đón sân bay cho phòng này. Vui lòng liên hệ lễ tân để được hỗ trợ thêm.`,
+              rooms: null,
+              hasRooms: false
+            };
+          }
           
           const roomInfo = `**${dbRoom.name || selectedRoom.name}**\n\n` +
             `• **Loại phòng:** ${dbRoom.roomType || 'N/A'}\n` +
@@ -2139,8 +2235,33 @@ const getPatternBasedResponse = async (userMessage, context = {}) => {
     }
   }
 
-  // ✅ Nếu user nói đổi ngày: luôn reset phạm vi, hỏi lại 2 lựa chọn (đặt trước policy)
+  // ✅ Nếu user nói đổi ngày
   if (isChangeDateIntent) {
+    // Trường hợp user nói rõ "đặt phòng khác vào ngày khác" → hiểu là muốn list mới, không hỏi 2 lựa chọn
+    const wantsOtherRoomAndDate =
+      (lower.includes("phòng khác") || lower.includes("đặt phòng khác")) &&
+      (lower.includes("ngày khác") || lower.includes("đổi ngày"));
+
+    if (wantsOtherRoomAndDate) {
+      // Xoá selectedRoom và roomId để tìm mới hoàn toàn
+      context.selectedRoom = null;
+      delete bookingContext.roomId;
+      delete bookingContext.roomName;
+      // Xoá ngày cũ để buộc nhập ngày mới
+      delete bookingContext.checkInDate;
+      delete bookingContext.checkOutDate;
+      // Xoá list phòng cũ trong context để không fallback
+      delete context.lastRoomSearchResults;
+      context.bookingContext = bookingContext;
+      return {
+        text: 'Mình hiểu là bạn muốn đặt **phòng khác vào ngày khác**.\nVui lòng nhập ngày nhận phòng, ngày trả phòng mới và số khách, mình sẽ tìm danh sách phòng phù hợp cho bạn nhé.',
+        rooms: null,
+        hasRooms: false,
+        bookingContext: context.bookingContext
+      };
+    }
+
+    // Mặc định: hỏi user muốn đổi ngày cho phòng đang xem hay xem tất cả phòng trống
     delete bookingContext.changeDateScope;
     bookingContext.pendingChangeDateChoice = true;
     context.bookingContext = bookingContext;
@@ -2152,7 +2273,7 @@ const getPatternBasedResponse = async (userMessage, context = {}) => {
             '• Gõ "xem tất cả phòng trống" để xem danh sách phòng theo ngày mới.\n\n' +
             (hasRoomsCard
               ? 'Phòng đang xem được giữ bên dưới, bạn xác nhận lựa chọn và cung cấp ngày mới giúp mình nhé.'
-              : 'Nếu bạn muốn đổi ngày cho một phòng cụ thể, hãy chọn phòng trong danh sách đã hiển thị trước đó hoặc gõ "xem tất cả phòng trống" để xem lại danh sách. Vui lòng cho mình biết ngày nhận/trả mới (dd/mm/yyyy) để kiểm tra.'),
+              : 'Nếu bạn muốn đổi ngày cho một phòng cụ thể, hãy chọn phòng trong danh sách đã hiển thị trước đó hoặc gõ "xem tất cả phòng trống" để xem lại danh sách. Vui lòng cho mình biết ngày nhận/trả mới để kiểm tra.'),
       rooms: roomsForCard,
       hasRooms: hasRoomsCard,
       bookingContext: context.bookingContext
@@ -7908,7 +8029,8 @@ const getAIResponse = async (userMessage, context = {}, conversationHistory = []
   );
 
   const changeAllRoomsIntent = isChangeDateIntent && (
-    lowerMessage.includes("tất cả") || lowerMessage.includes("xem tất cả") || lowerMessage.includes("xem hết") || lowerMessage.includes("all room") || lowerMessage.includes("all rooms")
+    lowerMessage.includes("tất cả") || lowerMessage.includes("xem tất cả") || lowerMessage.includes("xem hết") || lowerMessage.includes("all room") || lowerMessage.includes("all rooms") ||
+    ((lowerMessage.includes("phòng khác") || lowerMessage.includes("đặt phòng khác")) && (lowerMessage.includes("ngày khác") || lowerMessage.includes("đổi ngày")))
   );
 
   // ✅ Kiểm tra xem user có nói "chốt phòng đó", "chốt phòng này", "đặt phòng đó", "đặt phòng này" không
@@ -7966,13 +8088,18 @@ const getAIResponse = async (userMessage, context = {}, conversationHistory = []
   // ✅ Nếu user đã chọn phương án xem tất cả phòng trống theo ngày mới
   if (changeAllRoomsIntent) {
     if (bookingContext.pendingChangeDateChoice) delete bookingContext.pendingChangeDateChoice;
-    // Xóa selectedRoom để tìm mới
+    // Xóa selectedRoom và roomId để tìm mới hoàn toàn
     context.selectedRoom = null;
-    if (bookingContext.roomId) delete bookingContext.roomId;
-    if (bookingContext.roomName) delete bookingContext.roomName;
+    delete bookingContext.roomId;
+    delete bookingContext.roomName;
+    // Xóa ngày cũ để buộc nhập ngày mới
+    delete bookingContext.checkInDate;
+    delete bookingContext.checkOutDate;
     context.bookingContext = bookingContext;
+    // Xóa list phòng cũ trong context để không fallback
+    delete context.lastRoomSearchResults;
     return {
-      text: 'Bạn muốn xem tất cả phòng trống theo ngày mới. Vui lòng cung cấp ngày nhận/trả (dd/mm/yyyy) và số khách để mình tìm lại danh sách phòng mới cho bạn.',
+      text: 'Bạn muốn đặt phòng khác vào ngày khác. Vui lòng nhập ngày nhận phòng và ngày trả phòng mới (dd/mm/yyyy) cùng số khách để mình tìm lại danh sách phòng mới cho bạn.',
       rooms: null,
       hasRooms: false,
       bookingContext: context.bookingContext
@@ -8143,6 +8270,10 @@ const getAIResponse = async (userMessage, context = {}, conversationHistory = []
   else if (isRoomSearchRequest && !hasSelectedRoom) {
     searchCriteria = parseRoomSearchRequest(userMessage);
     
+    // 🚫 Đừng tìm phòng nếu chưa có đủ ngày + số khách, tránh trả list mặc định
+    const hasDatesInCriteria = searchCriteria.checkInDate && searchCriteria.checkOutDate;
+    const hasGuestsInCriteria = searchCriteria.guests || searchCriteria.maxOccupancy || searchCriteria.adults;
+    
     // ✅ Lưu dates vào context nếu có
     if (searchCriteria.checkInDate || searchCriteria.checkOutDate) {
       if (!context.bookingContext) context.bookingContext = {};
@@ -8154,11 +8285,21 @@ const getAIResponse = async (userMessage, context = {}, conversationHistory = []
       }
     }
     
-    // Tìm phòng với criteria (bao gồm dates để check availability)
-    roomSearchResults = await searchRooms(searchCriteria);
+    // Nếu chưa đủ thông tin, không tìm phòng -> để block thiếu thông tin xử lý
+    if (!hasDatesInCriteria || !hasGuestsInCriteria) {
+      console.log('ℹ️ Skipping searchRooms - missing dates or guests for room search request', {
+        hasDatesInCriteria,
+        hasGuestsInCriteria,
+        searchCriteria
+      });
+      roomSearchResults = null;
+    } else {
+      // Tìm phòng với criteria (bao gồm dates để check availability)
+      roomSearchResults = await searchRooms(searchCriteria);
+    }
     
-    // Log để debug
-    if (searchCriteria.checkInDate && searchCriteria.checkOutDate) {
+    // Log để debug (chỉ khi đã thực sự tìm phòng)
+    if (searchCriteria.checkInDate && searchCriteria.checkOutDate && roomSearchResults) {
       console.log(`🔍 Searching rooms from ${searchCriteria.checkInDate.toISOString().split('T')[0]} to ${searchCriteria.checkOutDate.toISOString().split('T')[0]}`);
       console.log(`✅ Found ${roomSearchResults.length} available rooms`);
     }
@@ -8281,6 +8422,46 @@ const getAIResponse = async (userMessage, context = {}, conversationHistory = []
         hasRooms: true
       });
       
+      // Nếu chỉ có 1 phòng trong kết quả và chưa có selectedRoom, tự chọn phòng đó để tránh yêu cầu chọn lại
+      if (!hasSelectedRoom && roomSearchResults.length === 1) {
+        const singleRoom = enrichedRooms[0];
+        // Set selectedRoom + bookingContext
+        context.selectedRoom = {
+          _id: singleRoom.id,
+          id: singleRoom.id,
+          name: singleRoom.name,
+          pricePerNight: singleRoom.pricePerNight,
+          roomType: singleRoom.roomType,
+          maxOccupancy: singleRoom.maxOccupancy,
+          view: singleRoom.view,
+          image: singleRoom.image,
+          thumbnailUrl: singleRoom.thumbnailUrl || singleRoom.image || null,
+          amenities: Array.isArray(singleRoom.amenities) ? singleRoom.amenities : []
+        };
+        if (!context.bookingContext) context.bookingContext = {};
+        context.bookingContext.roomId = singleRoom.id;
+        context.bookingContext.roomName = singleRoom.name;
+        context.bookingContext.roomPrice = singleRoom.pricePerNight;
+
+        // Lưu session nếu có
+        if (context.session) {
+          context.session.context = context.session.context || {};
+          context.session.context.selectedRoom = context.selectedRoom;
+          context.session.context.bookingContext = context.bookingContext;
+          context.session.markModified && context.session.markModified('context');
+          await context.session.save?.();
+        }
+
+        // Tạo message xác nhận thay vì yêu cầu chọn phòng
+        const dateLine = hasDates
+          ? `📅 Ngày đặt: ${new Date(bookingContext.checkInDate).toLocaleDateString('vi-VN')} - ${new Date(bookingContext.checkOutDate).toLocaleDateString('vi-VN')}\n`
+          : '';
+        const guestLine = hasGuests ? `👥 Số người: ${bookingContext.guests || bookingContext.maxOccupancy}\n` : '';
+        responseText = `Mình đã chọn sẵn phòng **${singleRoom.name}** cho bạn${hasDates || hasGuests ? ':\n' : '.'}` +
+          `${dateLine}${guestLine}` +
+          `Bạn cần mình giữ phòng và hoàn tất đặt chỗ? Hãy gửi **họ tên, email, số điện thoại** để mình hỗ trợ ngay.`;
+      }
+
       return {
         text: responseText,
         rooms: enrichedRooms,
@@ -8300,10 +8481,10 @@ const getAIResponse = async (userMessage, context = {}, conversationHistory = []
     }
     const hotline = "0901 234 567"; // Hotline mặc định
     const missingText = missing.length
-      ? `Vui lòng cung cấp thêm ${missing.join(", ")} để tôi kiểm tra lại.`
-      : "Vui lòng đổi khoảng ngày khác hoặc liên hệ hotline để được hỗ trợ.";
+      ? `Mình cần thêm ${missing.join(", ")} và số khách để kiểm tra phòng trống cho bạn.`
+      : "Bạn có thể đổi khoảng ngày khác hoặc liên hệ hotline để được hỗ trợ.";
     return {
-      text: `Hiện chưa tìm thấy phòng trống cho khoảng thời gian này. ${missingText} Hotline ${hotline}.`,
+      text: `${missing.length ? "" : "Hiện chưa tìm thấy phòng trống cho khoảng thời gian này. "}${missingText} Hotline ${hotline}.`,
       rooms: null,
       hasRooms: false
     };
@@ -11943,32 +12124,44 @@ export const chatWithAI = asyncHandler(async (req, res) => {
             bookingRoomName: bookingContext.roomName,
             availableRooms: rooms.map(r => r.name)
           });
-          roomsData = rooms.map(room => ({
-      id: room._id.toString(),
-      name: room.name,
-      roomType: room.roomType,
-      pricePerNight: room.pricePerNight,
-      maxOccupancy: room.maxOccupancy,
-      view: room.view,
-      image: room.image,
-      amenities: room.amenities || [],
-      detailLink: createRoomDetailLink(room._id)
-          }));
+        roomsData = rooms
+          .map(room => {
+            const roomId = room?._id || room?.id || room?.roomId;
+            if (!roomId) return null;
+            return {
+              id: roomId.toString(),
+              name: room.name,
+              roomType: room.roomType,
+              pricePerNight: room.pricePerNight,
+              maxOccupancy: room.maxOccupancy,
+              view: room.view,
+              image: room.image,
+              amenities: room.amenities || [],
+              detailLink: createRoomDetailLink(roomId)
+            };
+          })
+          .filter(Boolean);
           hasRooms = true;
         }
       } else {
         // Không có bookingContext.roomName, lấy tất cả phòng
-        roomsData = rooms.map(room => ({
-          id: room._id.toString(),
-          name: room.name,
-          roomType: room.roomType,
-          pricePerNight: room.pricePerNight,
-          maxOccupancy: room.maxOccupancy,
-          view: room.view,
-          image: room.image,
-          amenities: room.amenities || [],
-          detailLink: createRoomDetailLink(room._id)
-        }));
+      roomsData = rooms
+        .map(room => {
+          const roomId = room?._id || room?.id || room?.roomId;
+          if (!roomId) return null;
+          return {
+            id: roomId.toString(),
+            name: room.name,
+            roomType: room.roomType,
+            pricePerNight: room.pricePerNight,
+            maxOccupancy: room.maxOccupancy,
+            view: room.view,
+            image: room.image,
+            amenities: room.amenities || [],
+            detailLink: createRoomDetailLink(roomId)
+          };
+        })
+        .filter(Boolean);
         hasRooms = true;
       }
     }

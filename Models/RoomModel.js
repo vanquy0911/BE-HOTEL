@@ -18,6 +18,16 @@ const roomSchema = new mongoose.Schema({
   available: { type: Boolean, default: true },
   amenities: [String], // tiện nghi như wifi, tivi...
 
+  // Dịch vụ theo phòng
+  includedServices: [String], // Các dịch vụ đã bao gồm (ví dụ: breakfast, gym, parking)
+  paidServices: [
+    {
+      key: { type: String }, // Mã dịch vụ, map với hotelInfo.services (vd: airportPickup, restaurant, spa)
+      priceNote: { type: String }, // Ghi chú giá (vd: "Từ 200.000đ/chiều")
+      notes: { type: String } // Thông tin thêm (vd: "Đặt trước 24h")
+    }
+  ],
+
   location: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Location",
