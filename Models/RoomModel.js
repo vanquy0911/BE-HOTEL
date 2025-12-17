@@ -19,7 +19,12 @@ const roomSchema = new mongoose.Schema({
   amenities: [String], // tiện nghi như wifi, tivi...
 
   // Dịch vụ theo phòng
-  includedServices: [String], // Các dịch vụ đã bao gồm (ví dụ: breakfast, gym, parking)
+  includedServices: [
+    {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Service" // Reference đến Service model
+    }
+  ], // Các dịch vụ đã bao gồm (ví dụ: breakfast, gym, parking)
   paidServices: [
     {
       key: { type: String }, // Mã dịch vụ, map với hotelInfo.services (vd: airportPickup, restaurant, spa)

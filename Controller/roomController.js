@@ -112,7 +112,9 @@ export const getAllRooms = asyncHandler(async (req, res) => {
     if (roomType) filter.roomType = roomType;
     if (isAvailable === "true") filter.isAvailable = { $gt: 0 };
 
-    const rooms = await Room.find(filter).populate("location", "address province city");
+    const rooms = await Room.find(filter)
+      .populate("location", "address province city")
+      .populate("includedServices", "name description category price priceUnit isFree");
     
     res.json({
       success: true,
@@ -131,7 +133,9 @@ export const getAllRooms = asyncHandler(async (req, res) => {
 
 // Lấy chi tiết phòng theo ID
 export const getRoomById = asyncHandler(async (req, res) => {
-  const room = await Room.findById(req.params.id);
+  const room = await Room.findById(req.params.id)
+    .populate('includedServices', 'name description category price priceUnit isFree') // Populate services
+    .populate('location', 'address province city'); // Populate location
   if (!room) {
     res.status(404);
     throw new Error("Không tìm thấy phòng!");
@@ -141,7 +145,13 @@ export const getRoomById = asyncHandler(async (req, res) => {
 
 // Cập nhật thông tin phòng
 export const updateRoom = asyncHandler(async (req, res) => {
-  const room = await Room.findByIdAndUpdate(req.params.id, req.body, { new: true });
+  const room = await Room.findByIdAndUpdate(req.params.id, req.body, { 
+    new: true,
+    runValidators: true 
+  })
+    .populate('includedServices', 'name description category price priceUnit isFree') // Populate services
+    .populate('location', 'address province city'); // Populate location
+  
   if (!room) {
     res.status(404);
     throw new Error("Không tìm thấy phòng!");
@@ -222,6 +232,7 @@ export const searchRooms = asyncHandler(async (req, res) => {
     // Lấy tất cả phòng phù hợp
     let rooms = await Room.find(filter)
       .populate("location", "address province city")
+      .populate("includedServices", "name description category price priceUnit isFree")
       .lean();
 
     // Ưu tiên phòng có maxOccupancy chính xác với yêu cầu
