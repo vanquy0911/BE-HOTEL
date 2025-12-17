@@ -21,7 +21,7 @@ Từ khách sạn có thể di chuyển nhanh đến Bãi Trước, Mũi Nghinh 
 ## Địa chỉ
 
 **Rayal Park Hotel – Vũng Tàu**
-- Địa chỉ: Đường Thùy Vân, Phường Thắng Tam, TP. Vũng Tàu, Việt Nam
+- Địa chỉ: Thùy Vân, Phường 1, Vũng Tàu, Hồ Chí Minh City
 - Hotline: 0901 234 567
 - Email: info@rayalpark.com
 

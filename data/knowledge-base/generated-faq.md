@@ -24,7 +24,7 @@ A: Loại đơn, giá 1.000.000 ₫/đêm, chứa tối đa 2 khách. Tiện ng
 A: Loại đơn, giá 1.000.000 ₫/đêm, chứa tối đa 2 khách. Tiện nghi: WiFi miễn phí, TV, Điều hòa, Phòng tắm riêng, Máy sấy tóc.
 
 **Q9: Tôi có thể liên hệ khách sạn bằng cách nào?**
-A: Hotline: 0901 234 567, email: info@rayalpark.com, địa chỉ: 123 Đường ABC, Quận 1, TP.HCM, Việt Nam.
+A: Hotline: 0901 234 567, email: info@rayalpark.com, địa chỉ: Thùy Vân, Phường 1, Vũng Tàu, Hồ Chí Minh City.
 
 **Q10: Ngân sách của tôi dưới 1.000.000 VNĐ thì đặt phòng thế nào?**
 A: Giá thấp nhất hiện tại là 800.000 ₫/đêm cho phòng Phòng Đơn Standard 103. Bạn có thể đặt sớm, chọn Flash Sale/Standard, áp dụng mã khuyến mãi đang mở và yêu cầu nhân viên hỗ trợ giữ suất hủy phút chót. Bạn có thể áp dụng mã MA3005 để giảm thêm 150.000 ₫.

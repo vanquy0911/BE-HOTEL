@@ -8,6 +8,7 @@ import Payment from "../Models/PaymentModel.js";
 import googleCalendarService from "../services/googleCalendarService.js";
 import googleSheetsService from "../services/googleSheetsService.js";
 import emailService from "../services/emailService.js";
+import sendAdminNotification from "../utils/adminNotification.js";
 
 // Hàm tạo đơn đặt phòng mới
 // @route   POST /api/bookings
@@ -246,6 +247,29 @@ export const createBooking = asyncHandler(async (req, res) => {
       } catch (emailError) {
         console.error('⚠️ Failed to send booking confirmation email:', emailError);
         // Don't fail the request if email fails
+      }
+
+      // ✅ BƯỚC 5: Gửi email thông báo nội bộ cho admin
+      try {
+        const user = await User.findById(userId);
+        const customerName = user?.fullName || user?.firstName || 'Khách vãng lai';
+        const customerEmail = user?.email || '';
+        const customerPhone = user?.phone || '';
+
+        const subject = `Đơn đặt phòng mới #${finalBooking._id}`;
+        const html = `
+          <h2>📩 Đơn đặt phòng mới</h2>
+          <p><strong>Khách:</strong> ${customerName} (${customerEmail}, ${customerPhone})</p>
+          <p><strong>Mã booking:</strong> ${finalBooking._id}</p>
+          <p><strong>Phòng:</strong> ${room?.name || 'N/A'} (${room?.roomNumber || ''})</p>
+          <p><strong>Ngày:</strong> ${checkIn.toLocaleDateString("vi-VN")} - ${checkOut.toLocaleDateString("vi-VN")}</p>
+          <p><strong>Tổng tiền:</strong> ${(totalPrice || finalBooking.totalPrice || 0).toLocaleString("vi-VN")} VNĐ</p>
+        `;
+
+        await sendAdminNotification(subject, html);
+      } catch (adminEmailError) {
+        console.error('⚠️ Failed to send admin booking notification email:', adminEmailError);
+        // Không làm fail API nếu email nội bộ lỗi
       }
 
       res.status(201).json({
@@ -561,6 +585,22 @@ export const cancelBooking = asyncHandler(async (req, res) => {
         
         await emailService.sendBookingCancelled(booking, user, room, payment, null);
         console.log('✅ Booking cancellation email sent to:', user.email);
+
+        // ✅ Gửi thêm email thông báo nội bộ cho admin
+        try {
+          const subject = `Booking bị hủy #${booking._id}`;
+          const html = `
+            <h2>⚠️ Booking bị hủy</h2>
+            <p><strong>Khách:</strong> ${user.fullName || 'Khách vãng lai'} (${user.email || ''}, ${user.phone || ''})</p>
+            <p><strong>Mã booking:</strong> ${booking._id}</p>
+            <p><strong>Phòng:</strong> ${room.name} (${room.roomNumber || ''})</p>
+            <p><strong>Ngày:</strong> ${new Date(booking.checkInDate).toLocaleDateString("vi-VN")} - ${new Date(booking.checkOutDate).toLocaleDateString("vi-VN")}</p>
+            <p><strong>Trạng thái:</strong> Đã hủy</p>
+          `;
+          await sendAdminNotification(subject, html);
+        } catch (adminEmailError) {
+          console.error('⚠️ Failed to send admin cancellation notification email:', adminEmailError);
+        }
       } else {
         console.warn('⚠️ Cannot send cancellation email: user not found or no email');
       }

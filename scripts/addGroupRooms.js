@@ -22,9 +22,9 @@ const addGroupRooms = async () => {
     let location = await Location.findOne();
     if (!location) {
       location = new Location({
-        address: "123 Đường ABC, Quận 1",
-        province: "TP. Hồ Chí Minh", 
-        city: "TP. Hồ Chí Minh",
+        address: "Thùy Vân, Phường 1, Vũng Tàu",
+        province: "Hồ Chí Minh City", 
+        city: "Vũng Tàu",
         nearbyPlaces: ["Trung tâm thành phố", "Sân bay"],
         coordinates: { lat: 10.8231, lng: 106.6297 }
       });

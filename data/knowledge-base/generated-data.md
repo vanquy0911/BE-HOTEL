@@ -1,7 +1,7 @@
 # Dữ liệu tự động cho Chatbot
 ## Thông tin liên hệ
 - Tên khách sạn: Rayal Park Hotel
-- Địa chỉ: 123 Đường ABC, Quận 1, TP.HCM, Việt Nam
+- Địa chỉ: Thùy Vân, Phường 1, Vũng Tàu, Hồ Chí Minh City
 - Hotline: 0901 234 567
 - Email chung: info@rayalpark.com
 - Email đặt phòng: booking@rayalpark.com

@@ -6,6 +6,7 @@ import Room from "../Models/RoomModel.js";
 import vnpayService from "../services/vnpayService.js";
 import uploadPaymentReceipt from "../Middlewares/uploadPayment.js";
 import emailService from "../services/emailService.js";
+import sendAdminNotification from "../utils/adminNotification.js";
 
 // @desc    Tạo thanh toán mới
 // @route   POST /api/payments
@@ -315,6 +316,23 @@ export const confirmPayment = asyncHandler(async (req, res) => {
         if (user && user.email && room) {
           await emailService.sendPaymentConfirmed(booking, user, room, payment);
           console.log('✅ Payment confirmation email sent to:', user.email);
+
+          // ✅ Gửi email thông báo nội bộ cho admin
+          try {
+            const subject = `Thanh toán được xác nhận cho booking #${booking._id}`;
+            const html = `
+              <h2>💰 Thanh toán được xác nhận</h2>
+              <p><strong>Khách:</strong> ${user.fullName || 'Khách vãng lai'} (${user.email || ''}, ${user.phone || ''})</p>
+              <p><strong>Mã booking:</strong> ${booking._id}</p>
+              <p><strong>Phòng:</strong> ${room.name} (${room.roomNumber || ''})</p>
+              <p><strong>Số tiền:</strong> ${(payment.amount || 0).toLocaleString("vi-VN")} VNĐ</p>
+              <p><strong>Phương thức:</strong> ${payment.method}</p>
+              <p><strong>Thu ngân:</strong> ${payment.cashierId ? payment.cashierId.firstName + " " + payment.cashierId.lastName : "N/A"}</p>
+            `;
+            await sendAdminNotification(subject, html);
+          } catch (adminEmailError) {
+            console.error('⚠️ Failed to send admin payment confirmation email:', adminEmailError);
+          }
         } else {
           console.warn('⚠️ Cannot send payment confirmation email: user or room not found');
         }
@@ -741,9 +759,30 @@ export const vnpayCallback = asyncHandler(async (req, res) => {
       await payment.save();
 
       // Cập nhật booking
-      await Booking.findByIdAndUpdate(payment.bookingId, {
+      const booking = await Booking.findByIdAndUpdate(payment.bookingId, {
         status: 'confirmed'
       });
+
+      // ✅ Gửi email thông báo nội bộ cho admin về thanh toán online thành công
+      try {
+        const bookingDoc = await Booking.findById(payment.bookingId).populate('user').populate('room');
+        if (bookingDoc) {
+          const user = bookingDoc.user;
+          const room = bookingDoc.room;
+          const subject = `Thanh toán VNPay thành công cho booking #${bookingDoc._id}`;
+          const html = `
+            <h2>💳 Thanh toán VNPay thành công</h2>
+            <p><strong>Khách:</strong> ${user?.fullName || 'Khách vãng lai'} (${user?.email || ''}, ${user?.phone || ''})</p>
+            <p><strong>Mã booking:</strong> ${bookingDoc._id}</p>
+            <p><strong>Phòng:</strong> ${room?.name || 'N/A'} (${room?.roomNumber || ''})</p>
+            <p><strong>Số tiền:</strong> ${(payment.amount || 0).toLocaleString("vi-VN")} VNĐ</p>
+            <p><strong>Transaction ID:</strong> ${payment.vnpayTransactionId || ''}</p>
+          `;
+          await sendAdminNotification(subject, html);
+        }
+      } catch (adminEmailError) {
+        console.error('⚠️ Failed to send admin VNPay payment email:', adminEmailError);
+      }
 
       return res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:3000'}/payment-success?paymentId=${payment._id}`);
     } else {

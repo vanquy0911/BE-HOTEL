@@ -48,11 +48,11 @@ export const createRoom = asyncHandler(async (req, res) => {
       if (!defaultLocation) {
         // Tạo location mặc định
         defaultLocation = new Location({
-          address: "123 Đường ABC, Quận 1",
-          province: "TP. Hồ Chí Minh", 
-          city: "TP. Hồ Chí Minh",
-          nearbyPlaces: ["Trung tâm thành phố", "Sân bay"],
-          coordinates: { lat: 10.8231, lng: 106.6297 }
+          address: "Thùy Vân, Phường 1, Vũng Tàu",
+          province: "Hồ Chí Minh City", 
+          city: "Vũng Tàu",
+          nearbyPlaces: ["Bãi biển", "Trung tâm thành phố"],
+          coordinates: { lat: 10.3459, lng: 107.0842 }
         });
         await defaultLocation.save();
         console.log('✅ Created default location:', defaultLocation._id);
