@@ -580,7 +580,18 @@ const searchRooms = async (criteria) => {
 
     // Filter theo view
     if (criteria.view) {
-      filter.view = { $regex: criteria.view, $options: "i" };
+      // ✅ Cải thiện regex để match nhiều format: "biển" -> match "Ocean View", "Hướng Biển", "Sea View", "view biển", etc.
+      let viewPattern = criteria.view;
+      if (criteria.view === 'biển') {
+        // Match: "Ocean View", "Hướng Biển", "Sea View", "view biển", "biển", "ocean", "sea"
+        viewPattern = '(ocean|sea|biển|hướng biển)';
+      } else if (criteria.view === 'thành phố') {
+        viewPattern = '(city|thành phố)';
+      } else if (criteria.view === 'núi') {
+        viewPattern = '(mountain|núi)';
+      }
+      filter.view = { $regex: viewPattern, $options: "i" };
+      console.log(`🔍 Filtering by view: pattern="${viewPattern}", criteria.view="${criteria.view}"`);
     }
 
     // Filter theo loại phòng
@@ -1484,8 +1495,7 @@ const getRuleBasedResponse = (userMessage, language = 'vi') => {
       // ✅ GIAI ĐOẠN 1: Thêm 20+ câu hỏi thường gặp
       'phòng có bao nhiêu loại': 'Khách sạn chúng tôi có 4 loại phòng:\n- Phòng Đơn (1-2 người)\n- Phòng Đôi (2 người)\n- Phòng VIP (2-4 người)\n- Phòng Suite (4-6 người)\n\nBạn muốn đặt loại phòng nào?',
       'có mấy loại phòng': 'Khách sạn chúng tôi có 4 loại phòng:\n- Phòng Đơn (1-2 người)\n- Phòng Đôi (2 người)\n- Phòng VIP (2-4 người)\n- Phòng Suite (4-6 người)\n\nBạn muốn đặt loại phòng nào?',
-      'chính sách hủy phòng': 'Chính sách hủy phòng:\n- Hủy trước 24h: Miễn phí\n- Hủy trong 24h: Phí 50%\n- Không hủy: Phí 100%\n\nVui lòng liên hệ hotline để hủy phòng: 0901 234 567',
-      'hủy phòng': 'Chính sách hủy phòng:\n- Hủy trước 24h: Miễn phí\n- Hủy trong 24h: Phí 50%\n- Không hủy: Phí 100%\n\nVui lòng liên hệ hotline để hủy phòng: 0901 234 567',
+      // ✅ Removed 'chính sách hủy phòng' and 'hủy phòng' - handled by complex pattern that fetches from hotelInfo
       'có phòng gym không': 'Có! Khách sạn có phòng gym hiện đại mở cửa 24/7. Miễn phí cho khách lưu trú. 💪',
       'có hồ bơi không': 'Có! Khách sạn có hồ bơi ngoài trời rộng rãi. Mở cửa từ 6:00 - 22:00 hàng ngày. 🏊',
       'có spa không': 'Có! Khách sạn có spa và massage. Vui lòng đặt lịch trước qua hotline: 0901 234 567. 💆',
@@ -1509,7 +1519,7 @@ const getRuleBasedResponse = (userMessage, language = 'vi') => {
       'email khách sạn': 'Email của chúng tôi là: info@rayalpark.com. Bạn có thể gửi email bất cứ lúc nào! 📧',
       'facebook': 'Facebook của chúng tôi: facebook.com/rayalparkhotel. Theo dõi để cập nhật ưu đãi mới nhất! 📱',
       'website': 'Website của chúng tôi: www.rayalpark.com. Bạn có thể đặt phòng trực tuyến tại đây! 🌐',
-      'giá phòng bao nhiêu': 'Giá phòng dao động từ 1.500.000 - 5.000.000 VNĐ/đêm tùy loại. Để biết giá chính xác, vui lòng cho biết ngày và số người! 💰',
+      // ✅ Removed 'giá phòng bao nhiêu' - handled by complex pattern that fetches real prices from DB
       'phòng rẻ nhất': 'Phòng rẻ nhất là Phòng Đơn từ 1.500.000 VNĐ/đêm. Để biết giá chính xác, vui lòng cho biết ngày và số người! 💰',
       'phòng đắt nhất': 'Phòng Suite là loại cao cấp nhất từ 5.000.000+ VNĐ/đêm. Để biết giá chính xác, vui lòng cho biết ngày và số người! 💰',
       'có bao gồm bữa sáng không': 'Bữa sáng có thể được bao gồm trong giá phòng hoặc đặt thêm. Vui lòng cho biết khi đặt phòng! 🍳',
@@ -2409,13 +2419,25 @@ const getPatternBasedResponse = async (userMessage, context = {}) => {
     const checkOutDate = parseDateFromText(dateWithFamilyPattern[2]);
 
     // Parse số người lớn / trẻ em từ toàn bộ câu (độc lập với regex ngày)
+    // ✅ Cải thiện: Parse cả "di 2 khách", "đi 2 khách", "2 khách", "2 người"
     const adultsMatch = lower.match(/(\d+)\s*(?:người lớn|adults?)/i);
     const kidsMatch = lower.match(/(\d+)\s*(?:trẻ em|bé|children?)/i);
+    const guestsMatch = lower.match(/(?:di|đi|cho|for)\s*(\d+)\s*(?:khách|người|people|guests?)/i) || 
+                       lower.match(/(\d+)\s*(?:khách|người|people|guests?)/i);
+    
     const adults = adultsMatch ? parseInt(adultsMatch[1]) : 0;
     const kids = kidsMatch ? parseInt(kidsMatch[1]) : 0;
-    const guests = adults + kids || adults || kids;
+    const guests = adults + kids || (guestsMatch ? parseInt(guestsMatch[1]) : 0) || adults || kids;
 
-    console.log('🔍 Fallback family booking parse:', { checkInRaw: dateWithFamilyPattern[1], checkOutRaw: dateWithFamilyPattern[2], adults, kids, guests });
+    console.log('🔍 Fallback family booking parse:', { 
+      checkInRaw: dateWithFamilyPattern[1], 
+      checkOutRaw: dateWithFamilyPattern[2], 
+      adults, 
+      kids, 
+      guests,
+      hasRequestedView: !!context.requestedView,
+      requestedView: context.requestedView
+    });
 
     if (checkInDate && checkOutDate && guests > 0) {
       if (checkInDate >= checkOutDate) {
@@ -2432,7 +2454,30 @@ const getPatternBasedResponse = async (userMessage, context = {}) => {
           checkInDate,
           checkOutDate
         };
+        
+        // ✅ QUAN TRỌNG: Nếu có context.requestedView (từ câu hỏi trước về view biển), sử dụng nó
+        if (context.requestedView && !searchCriteria.view) {
+          searchCriteria.view = context.requestedView;
+          console.log(`✅ Using saved requestedView from context in fallback: ${context.requestedView}`);
+        }
+        
         const rooms = await searchRooms(searchCriteria);
+        
+        // ✅ Lưu requestedView vào biến tạm trước khi reset (để dùng trong response text)
+        const hadRequestedView = context.requestedView;
+        
+        // ✅ CHỈ reset requestedView nếu đã tìm được phòng HOẶC user không muốn view biển nữa
+        // Nếu không tìm được phòng với view biển, giữ lại requestedView để có thể thông báo cho user
+        if (context.requestedView && rooms && rooms.length > 0) {
+          console.log(`✅ Reset requestedView after fallback room search (found ${rooms.length} rooms)`);
+          context.requestedView = null;
+          if (context.session) {
+            context.session.requestedView = null;
+          }
+        } else if (context.requestedView && (!rooms || rooms.length === 0)) {
+          console.log(`⚠️ No rooms found with requestedView='${context.requestedView}', keeping it for user notification`);
+          // Giữ lại requestedView để có thể thông báo cho user rằng không có phòng view biển
+        }
         if (rooms && rooms.length > 0) {
           if (!context.bookingContext) context.bookingContext = {};
           context.bookingContext.checkInDate = checkInDate;
@@ -2447,7 +2492,9 @@ const getPatternBasedResponse = async (userMessage, context = {}) => {
           const checkOutStr = checkOutDate.toLocaleDateString('vi-VN');
           const nights = Math.ceil((checkOutDate - checkInDate) / (1000 * 60 * 60 * 24));
 
-          let responseText = `Mình đã tìm được ${rooms.length} phòng phù hợp cho ${adults || guests} người lớn${kids ? ` và ${kids} trẻ em` : ''}! 😊\n\n`;
+          // ✅ Thêm thông tin về view nếu có requestedView (sử dụng biến tạm đã lưu)
+          const viewInfo = hadRequestedView === 'biển' ? ' view biển' : '';
+          let responseText = `Mình đã tìm được ${rooms.length} phòng${viewInfo} phù hợp cho ${adults || guests} người lớn${kids ? ` và ${kids} trẻ em` : ''}! 😊\n\n`;
           responseText += `📅 **Thông tin đặt phòng:**\n`;
           responseText += `• Check-in: ${checkInStr}\n`;
           responseText += `• Check-out: ${checkOutStr}\n`;
@@ -2473,6 +2520,19 @@ const getPatternBasedResponse = async (userMessage, context = {}) => {
             text: responseText,
             rooms,
             hasRooms: true
+          };
+        } else if (context.requestedView === 'biển') {
+          // ✅ Xử lý khi không tìm được phòng view biển
+          const checkInStr = checkInDate.toLocaleDateString('vi-VN');
+          const checkOutStr = checkOutDate.toLocaleDateString('vi-VN');
+          return {
+            text: `Hiện tại không còn phòng view biển trống từ ${checkInStr} đến ${checkOutStr} cho ${guests} người.\n\n` +
+                  `Bạn muốn mình:\n` +
+                  `• Tìm phòng view khác (thành phố, núi)?\n` +
+                  `• Tìm phòng không yêu cầu view cụ thể?\n` +
+                  `• Hoặc thử ngày khác?`,
+            rooms: null,
+            hasRooms: false
           };
         }
       } catch (error) {
@@ -2654,14 +2714,20 @@ const getPatternBasedResponse = async (userMessage, context = {}) => {
       if (txt) return { text: `Chính sách thú cưng: ${txt}`, rooms: null, hasRooms: false };
       return { text: hotelInfo.disclaimers?.updating || `Vui lòng liên hệ hotline ${hotline} để xác nhận chính sách thú cưng.`, rooms: null, hasRooms: false };
     }
-    // Chính sách hủy
+    // Chính sách hủy - Format đẹp hơn
     if (matchKeywords(["hủy", "cancel", "cancellation"])) {
       const retail = hotelInfo.policies?.cancel?.retail;
       const group = hotelInfo.policies?.cancel?.group;
       if (retail || group) {
-        let text = "Chính sách hủy: ";
-        if (retail) text += `Khách lẻ: ${retail}. `;
-        if (group) text += `Khách đoàn: ${group}.`;
+        let text = "📋 **Chính sách hủy phòng:**\n\n";
+        if (retail) {
+          text += `👤 **Khách lẻ:**\n${retail}\n\n`;
+        }
+        if (group) {
+          text += `👥 **Khách đoàn:**\n${group}\n\n`;
+        }
+        text += `💡 **Lưu ý:** Để hủy phòng, vui lòng liên hệ hotline ${hotline} hoặc email ${hotelInfo?.contact?.email || 'info@rayalpark.com'} trước thời hạn quy định.\n\n`;
+        text += `📞 **Hotline:** ${hotline}`;
         return { text, rooms: null, hasRooms: false };
       }
       return { text: hotelInfo.disclaimers?.updating || `Vui lòng liên hệ hotline ${hotline} để xác nhận chính sách hủy.`, rooms: null, hasRooms: false };
@@ -2744,18 +2810,88 @@ const getPatternBasedResponse = async (userMessage, context = {}) => {
       if (langs?.length) return { text: `Ngôn ngữ hỗ trợ: ${langs.join(", ")}.`, rooms: null, hasRooms: false };
     }
 
-    // Giá tham khảo khi chưa có ngày
+    // Giá tham khảo khi chưa có ngày - Lấy giá thực từ database
     const mentionsDate = lower.match(/\d{1,2}\/\d{1,2}/) || lower.includes("hôm nay") || lower.includes("ngày mai") || lower.includes("tuần tới");
     if (!hasDates && !mentionsDate && matchKeywords(["giá", "bao nhiêu", "price", "cost", "giá phòng"]) && lower.includes("phòng")) {
-      const prices = getFallbackPrices(hotelInfo);
-      const deluxe = prices.deluxe ? `Deluxe ${prices.deluxe}` : null;
-      const suite = prices.suite ? `Suite ${prices.suite}` : null;
-      const family = prices.family ? `Family ${prices.family}` : null;
-      const list = [deluxe, suite, family].filter(Boolean).join("; ");
-      if (list) {
-        return { text: `Giá tham khảo (có thể thay đổi theo ngày): ${list}. Để có giá chính xác, vui lòng cung cấp ngày nhận/trả phòng.`, rooms: null, hasRooms: false };
+      try {
+        // ✅ Lấy giá thực từ database thay vì fallback prices
+        const rooms = await Room.find({ available: true })
+          .select('name roomType pricePerNight')
+          .sort({ pricePerNight: 1 })
+          .lean();
+        
+        if (rooms && rooms.length > 0) {
+          // Nhóm phòng theo roomType và lấy giá min/max
+          const roomTypes = {};
+          rooms.forEach(room => {
+            const type = room.roomType || 'Standard';
+            if (!roomTypes[type]) {
+              roomTypes[type] = {
+                min: room.pricePerNight,
+                max: room.pricePerNight,
+                count: 1
+              };
+            } else {
+              roomTypes[type].min = Math.min(roomTypes[type].min, room.pricePerNight);
+              roomTypes[type].max = Math.max(roomTypes[type].max, room.pricePerNight);
+              roomTypes[type].count++;
+            }
+          });
+          
+          // Format response
+          const priceList = Object.entries(roomTypes)
+            .map(([type, data]) => {
+              if (data.min === data.max) {
+                return `**${type}**: ${data.min.toLocaleString('vi-VN')} VNĐ/đêm`;
+              } else {
+                return `**${type}**: ${data.min.toLocaleString('vi-VN')} - ${data.max.toLocaleString('vi-VN')} VNĐ/đêm`;
+              }
+            })
+            .join('\n');
+          
+          const minPrice = Math.min(...rooms.map(r => r.pricePerNight));
+          const maxPrice = Math.max(...rooms.map(r => r.pricePerNight));
+          
+          return {
+            text: `💰 **Giá phòng tham khảo:**\n\n${priceList}\n\n` +
+                  `📊 **Khoảng giá:** ${minPrice.toLocaleString('vi-VN')} - ${maxPrice.toLocaleString('vi-VN')} VNĐ/đêm\n\n` +
+                  `💡 **Lưu ý:** Giá có thể thay đổi theo ngày và mùa. Để có giá chính xác, vui lòng cung cấp:\n` +
+                  `📅 Ngày nhận phòng\n` +
+                  `📅 Ngày trả phòng\n` +
+                  `👥 Số lượng khách\n\n` +
+                  `Tôi sẽ tìm phòng phù hợp với giá tốt nhất cho bạn! 😊`,
+            rooms: null,
+            hasRooms: false
+          };
+        }
+      } catch (error) {
+        console.error('❌ Error fetching room prices from DB:', error);
       }
-      return { text: `Giá phòng thay đổi theo ngày. Vui lòng cung cấp ngày nhận/trả phòng hoặc liên hệ hotline ${hotline} để báo giá chính xác.`, rooms: null, hasRooms: false };
+      
+      // Fallback nếu không lấy được từ DB
+      const prices = getFallbackPrices(hotelInfo);
+      const deluxe = prices.deluxe ? `**Deluxe**: ${prices.deluxe}` : null;
+      const suite = prices.suite ? `**Suite**: ${prices.suite}` : null;
+      const family = prices.family ? `**Family**: ${prices.family}` : null;
+      const priceList = [deluxe, suite, family].filter(Boolean).join('\n');
+      if (priceList) {
+        return {
+          text: `💰 **Giá phòng tham khảo:**\n\n${priceList}\n\n` +
+                `💡 **Lưu ý:** Giá có thể thay đổi theo ngày. Để có giá chính xác, vui lòng cung cấp ngày nhận/trả phòng và số lượng khách.`,
+          rooms: null,
+          hasRooms: false
+        };
+      }
+      return {
+        text: `💰 Giá phòng thay đổi theo ngày và loại phòng.\n\n` +
+              `Để có giá chính xác, vui lòng cung cấp:\n` +
+              `📅 Ngày nhận phòng\n` +
+              `📅 Ngày trả phòng\n` +
+              `👥 Số lượng khách\n\n` +
+              `Hoặc liên hệ hotline ${hotline} để được báo giá ngay! 📞`,
+        rooms: null,
+        hasRooms: false
+      };
     }
 
     // Local info (buffet sáng / note chung)
@@ -2874,6 +3010,9 @@ const getPatternBasedResponse = async (userMessage, context = {}) => {
     const view = viewPattern[1].toLowerCase();
     let viewInfo = '';
     if (view.includes('biển') || view.includes('sea') || view.includes('ocean')) {
+      // ✅ QUAN TRỌNG: Lưu requestedView để dùng khi user cung cấp ngày sau đó
+      context.requestedView = 'biển';
+      console.log(`✅ Detected sea view request in Pattern 1.10, setting context.requestedView = 'biển'`);
       viewInfo = 'Phòng view biển: Tầm nhìn ra biển tuyệt đẹp, không khí trong lành';
     } else if (view.includes('thành phố') || view.includes('city')) {
       viewInfo = 'Phòng view thành phố: Tầm nhìn ra thành phố nhộn nhịp';
@@ -3877,6 +4016,79 @@ const getPatternBasedResponse = async (userMessage, context = {}) => {
       rooms: null,
       hasRooms: false
     };
+  }
+
+  // Pattern 1.36.5: Câu hỏi về sức chứa của phòng đã chọn ("phòng này ở được X người không")
+  // ✅ QUAN TRỌNG: Sử dụng selectedRoom hoặc bookingContext để trả lời về capacity
+  const selectedRoomCapacityPattern = lower.match(/(?:phòng này|phòng đó|phòng đã chọn|room this|room that|selected room).*?(?:ở được|chứa được|có thể ở|fit|accommodate|sức chứa).*?(\d+)\s*(?:người|people|person|guests)(?:.*?(?:không|not|no))?/i) ||
+                                       lower.match(/(?:phòng này|phòng đó|phòng đã chọn).*?(\d+)\s*(?:người|people|person|guests).*?(?:ở được|chứa được|có thể ở|fit|accommodate)/i);
+  if (selectedRoomCapacityPattern && (context.selectedRoom || context.bookingContext?.roomId || context.lastRoomSearchResults?.length > 0)) {
+    const requestedGuests = parseInt(selectedRoomCapacityPattern[1]);
+    if (!isNaN(requestedGuests) && requestedGuests > 0) {
+      // Ưu tiên lấy từ selectedRoom, sau đó từ bookingContext, cuối cùng từ lastRoomSearchResults
+      let selectedRoom = context.selectedRoom;
+      let roomId = null;
+      
+      if (selectedRoom) {
+        roomId = selectedRoom._id?.toString ? selectedRoom._id.toString() : String(selectedRoom._id || '');
+      } else if (context.bookingContext?.roomId) {
+        roomId = context.bookingContext.roomId;
+      } else if (context.lastRoomSearchResults?.length > 0) {
+        selectedRoom = context.lastRoomSearchResults[0];
+        roomId = selectedRoom._id?.toString ? selectedRoom._id.toString() : String(selectedRoom._id || '');
+      }
+      
+      // Nếu có roomId nhưng chưa có maxOccupancy, lấy từ DB
+      if (roomId && (!selectedRoom || !selectedRoom.maxOccupancy)) {
+        try {
+          const dbRoom = await Room.findById(roomId).lean();
+          if (dbRoom) {
+            selectedRoom = selectedRoom ? { ...selectedRoom, ...dbRoom } : dbRoom;
+          }
+        } catch (error) {
+          console.error('❌ Error fetching room for capacity check:', error);
+        }
+      }
+      
+      if (selectedRoom && selectedRoom.maxOccupancy) {
+        const maxOccupancy = selectedRoom.maxOccupancy;
+        const roomName = selectedRoom.name || context.bookingContext?.roomName || 'phòng này';
+        
+        if (requestedGuests <= maxOccupancy) {
+          return {
+            text: `✅ **Có**, ${roomName} ở được **${requestedGuests} người**.\n\n` +
+                  `👥 **Sức chứa tối đa:** ${maxOccupancy} người\n\n` +
+                  (requestedGuests < maxOccupancy 
+                    ? `💡 Phòng còn dư chỗ, rất thoải mái cho ${requestedGuests} người!\n\n`
+                    : `💡 Phòng vừa đủ cho ${requestedGuests} người.\n\n`) +
+                  `Bạn muốn đặt phòng này không? 🏨`,
+            rooms: roomId ? [{
+              id: roomId,
+              name: roomName,
+              roomType: selectedRoom.roomType,
+              pricePerNight: selectedRoom.pricePerNight,
+              maxOccupancy: maxOccupancy,
+              view: selectedRoom.view,
+              image: selectedRoom.image || selectedRoom.thumbnailUrl || '',
+              amenities: Array.isArray(selectedRoom.amenities) ? selectedRoom.amenities : []
+            }] : null,
+            hasRooms: !!roomId
+          };
+        } else {
+          return {
+            text: `❌ **Không**, ${roomName} chỉ ở được tối đa **${maxOccupancy} người**.\n\n` +
+                  `👥 **Sức chứa hiện tại:** ${maxOccupancy} người\n` +
+                  `👥 **Bạn cần:** ${requestedGuests} người\n\n` +
+                  `💡 **Gợi ý:**\n` +
+                  `• Đặt thêm 1 phòng nữa để đủ chỗ cho ${requestedGuests} người\n` +
+                  `• Hoặc tìm phòng có sức chứa lớn hơn (Suite, VIP)\n\n` +
+                  `Bạn muốn tôi tìm phòng phù hợp cho ${requestedGuests} người không? 🔍`,
+            rooms: null,
+            hasRooms: false
+          };
+        }
+      }
+    }
   }
 
   // Pattern 1.37: Câu hỏi về phòng đã chọn ("phòng đó", "phòng này", "phòng đã chọn")
@@ -5533,11 +5745,11 @@ const getPatternBasedResponse = async (userMessage, context = {}) => {
   // Lưu dấu hiệu khách muốn view biển để dùng khi họ cung cấp ngày sau đó
   if (wantsSeaView) {
     context.requestedView = 'biển';
-    if (context.session) {
-      context.session.requestedView = 'biển';
-    }
-  } else if (!wantsSeaView && !context.requestedView && context.session?.requestedView) {
-    context.requestedView = context.session.requestedView;
+    console.log(`✅ Detected sea view request, setting context.requestedView = 'biển'`);
+    // Note: requestedView sẽ được lưu vào session.context.requestedView ở phần save session
+  } else if (!wantsSeaView && !context.requestedView) {
+    // Nếu không có trong message hiện tại và chưa có trong context, giữ nguyên (đã được restore từ session ở đầu hàm)
+    console.log(`ℹ️ No sea view in current message, context.requestedView = ${context.requestedView || 'null'}`);
   }
 
   // Pattern: Khách đã cung cấp ngày và muốn phòng view biển (từ message hiện tại hoặc lưu từ trước) → tìm tất cả phòng view biển còn trống
@@ -8270,6 +8482,12 @@ const getAIResponse = async (userMessage, context = {}, conversationHistory = []
   else if (isRoomSearchRequest && !hasSelectedRoom) {
     searchCriteria = parseRoomSearchRequest(userMessage);
     
+    // ✅ QUAN TRỌNG: Nếu có context.requestedView (từ câu hỏi trước về view biển), sử dụng nó
+    if (context.requestedView && !searchCriteria.view) {
+      searchCriteria.view = context.requestedView;
+      console.log(`✅ Using saved requestedView from context: ${context.requestedView}`);
+    }
+    
     // 🚫 Đừng tìm phòng nếu chưa có đủ ngày + số khách, tránh trả list mặc định
     const hasDatesInCriteria = searchCriteria.checkInDate && searchCriteria.checkOutDate;
     const hasGuestsInCriteria = searchCriteria.guests || searchCriteria.maxOccupancy || searchCriteria.adults;
@@ -8295,7 +8513,22 @@ const getAIResponse = async (userMessage, context = {}, conversationHistory = []
       roomSearchResults = null;
     } else {
       // Tìm phòng với criteria (bao gồm dates để check availability)
+      console.log(`🔍 Searching rooms with criteria:`, {
+        view: searchCriteria.view,
+        maxOccupancy: searchCriteria.maxOccupancy,
+        checkInDate: searchCriteria.checkInDate?.toISOString().split('T')[0],
+        checkOutDate: searchCriteria.checkOutDate?.toISOString().split('T')[0]
+      });
       roomSearchResults = await searchRooms(searchCriteria);
+      
+      // ✅ Reset requestedView sau khi đã tìm phòng
+      if (context.requestedView) {
+        console.log(`✅ Reset requestedView after room search`);
+        context.requestedView = null;
+        if (context.session) {
+          context.session.requestedView = null;
+        }
+      }
     }
     
     // Log để debug (chỉ khi đã thực sự tìm phòng)
@@ -10356,6 +10589,23 @@ export const chatWithAI = asyncHandler(async (req, res) => {
     }
     
     
+    // ✅ QUAN TRỌNG: Restore requestedView từ session (để nhớ yêu cầu view biển từ câu hỏi trước)
+    if (session?.context?.requestedView) {
+      context.requestedView = session.context.requestedView;
+      console.log(`✅ Restored requestedView from session: ${context.requestedView}`, {
+        sessionId: session.sessionId,
+        hasContext: !!session.context,
+        contextKeys: session.context ? Object.keys(session.context) : []
+      });
+    } else {
+      console.log(`ℹ️ No requestedView in session to restore`, {
+        hasSession: !!session,
+        hasContext: !!session?.context,
+        sessionContextKeys: session?.context ? Object.keys(session.context) : [],
+        currentContextRequestedView: context.requestedView
+      });
+    }
+    
     // ✅ QUAN TRỌNG: Restore lastRoomSearchResults từ session (CHỈ 1 CHỖ DUY NHẤT - TRƯỚC parse intent)
     if (session?.context?.lastRoomSearchResults) {
       context.lastRoomSearchResults = session.context.lastRoomSearchResults;
@@ -11979,6 +12229,16 @@ export const chatWithAI = asyncHandler(async (req, res) => {
         console.log(`💾 Preserved lastRoomSearchResults from session (restored to context):`, {
           count: context.lastRoomSearchResults.length
         });
+      }
+      
+      // ✅ QUAN TRỌNG: Lưu requestedView vào session để nhớ yêu cầu view biển
+      if (context.requestedView) {
+        session.context.requestedView = context.requestedView;
+        console.log(`💾 Saving requestedView to session: ${context.requestedView}`);
+      } else if (context.requestedView === null && session.context.requestedView) {
+        // Nếu context.requestedView là null (đã reset), xóa khỏi session
+        delete session.context.requestedView;
+        console.log(`💾 Removed requestedView from session (was reset)`);
       }
       
       // ✅ QUAN TRỌNG: Đảm bảo lastRoomSearchResults luôn có trong session trước khi save

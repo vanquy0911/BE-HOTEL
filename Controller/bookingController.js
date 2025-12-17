@@ -174,34 +174,29 @@ export const createBooking = asyncHandler(async (req, res) => {
       // Tiếp tục với Google Sheets (ngoài transaction)
       const finalBooking = booking;
 
-      // ✅ BƯỚC 2: Thêm vào Google Calendar (chỉ khi status = 'confirmed')
-      // Note: Calendar event sẽ được tạo khi booking được confirm, không phải khi tạo
-      // Nếu muốn tạo ngay khi pending, có thể uncomment phần này:
-      /*
-      if (finalBooking.status === 'confirmed') {
-        try {
-          const user = await User.findById(userId);
-          const calendarEvent = await googleCalendarService.createBookingEvent({
-            roomName: room.name,
-            customerName: user?.fullName || 'Khách vãng lai',
-            checkIn: checkIn,
-            checkOut: checkOut,
-            bookingId: finalBooking._id.toString(),
-            roomNumber: room.roomNumber,
-            totalPrice: totalPrice,
-            guests: finalBooking.roomQuantity || 1
-          });
-          
-          if (calendarEvent) {
-            // Lưu eventId vào booking để có thể xóa sau này
-            finalBooking.calendarEventId = calendarEvent.id;
-            await finalBooking.save();
-          }
-        } catch (error) {
-          console.error('❌ Google Calendar error (non-blocking):', error.message);
+      // ✅ BƯỚC 2: Thêm vào Google Calendar ngay khi booking được tạo
+      try {
+        const user = await User.findById(userId);
+        const calendarEvent = await googleCalendarService.createBookingEvent({
+          roomName: room.name,
+          customerName: user?.fullName || 'Khách vãng lai',
+          checkIn: checkIn,
+          checkOut: checkOut,
+          bookingId: finalBooking._id.toString(),
+          roomNumber: room.roomNumber,
+          totalPrice: totalPrice,
+          guests: finalBooking.roomQuantity || 1
+        });
+        
+        if (calendarEvent) {
+          // Lưu eventId vào booking để có thể xóa sau này
+          finalBooking.calendarEventId = calendarEvent.id;
+          await finalBooking.save();
+          console.log('✅ Google Calendar event created for booking:', finalBooking._id);
         }
+      } catch (error) {
+        console.error('❌ Google Calendar error (non-blocking):', error.message);
       }
-      */
 
       // ✅ BƯỚC 3: Thêm vào Google Sheets
       try {
@@ -474,11 +469,13 @@ export const cancelBooking = asyncHandler(async (req, res) => {
     }
 
     // Kiểm tra booking đã bị hủy chưa
+    // ✅ Idempotent operation: Nếu đã cancelled, trả về 200 với message thông báo
     if (booking.status === 'cancelled') {
-      console.warn('⚠️ cancelBooking - Booking already cancelled:', bookingId);
-      return res.status(400).json({
-        success: false,
-        message: "Đơn đặt phòng này đã được hủy trước đó."
+      console.log('ℹ️ cancelBooking - Booking already cancelled (idempotent):', bookingId);
+      return res.status(200).json({
+        success: true,
+        message: "Đơn đặt phòng này đã được hủy trước đó.",
+        alreadyCancelled: true
       });
     }
 

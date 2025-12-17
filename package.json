@@ -26,6 +26,7 @@
         "seed-services": "node seedServices.js",
         "ingest-kb": "node scripts/ingestKnowledgeBase.js",
         "view-cache": "node scripts/viewCache.js",
-        "seed-nearby-places": "node scripts/seedNearbyPlacesFromKB.js"
+        "seed-nearby-places": "node scripts/seedNearbyPlacesFromKB.js",
+        "create-calendar-events": "node scripts/create-missing-calendar-events.js"
     }
 }
