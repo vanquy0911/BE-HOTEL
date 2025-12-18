@@ -2094,6 +2094,11 @@ const getPatternBasedResponse = async (userMessage, context = {}) => {
   // ✅ PRIORITY: Nếu user muốn xem tiện ích/dịch vụ của phòng đã chọn, load từ DB và trả về thông tin thật
   const breakfastKeywords = ["buffet sáng", "ăn sáng", "breakfast"];
   const shuttleKeywords = ["đưa đón", "đưa rước", "airport", "sân bay", "shuttle", "đón tiễn"];
+  const earlyLateKeywords = [
+    "early", "late", "check-in", "check out", "checkout",
+    "nhận phòng sớm", "trả phòng trễ", "trả phòng muộn",
+    "check in sớm", "check out muộn", "early check-in", "late check-out"
+  ];
   const matchesAny = (arr) => arr.some(k => lower.includes(k));
 
   const isViewRoomAmenitiesIntent = (
@@ -2105,7 +2110,7 @@ const getPatternBasedResponse = async (userMessage, context = {}) => {
     lower.includes("phòng này có gì") ||
     lower.includes("phòng đó có gì") ||
     (lower.includes("xem") && lower.includes("chi tiết") && (lower.includes("phòng này") || lower.includes("phòng đó") || hasSelectedRoom)) ||
-    ((hasSelectedRoom || lower.includes("phòng")) && (matchesAny(breakfastKeywords) || matchesAny(shuttleKeywords)))
+    ((hasSelectedRoom || lower.includes("phòng")) && (matchesAny(breakfastKeywords) || matchesAny(shuttleKeywords) || matchesAny(earlyLateKeywords)))
   );
 
   if (isViewRoomAmenitiesIntent && hasSelectedRoom) {
@@ -2359,6 +2364,80 @@ const getPatternBasedResponse = async (userMessage, context = {}) => {
 
             return {
               text: `Hiện chưa có dịch vụ đưa đón sân bay cho phòng này. Vui lòng liên hệ lễ tân để được hỗ trợ thêm.`,
+              rooms: null,
+              hasRooms: false
+            };
+          }
+
+          // ✅ Early/Late check-in/out theo phòng đã chọn
+          if (matchesKeywords(earlyLateKeywords) && hasSelectedRoom) {
+            const hotelEarlyLate = getPolicy(hotelInfo, "earlyLate");
+            const roomName = dbRoom?.name || selectedRoom.name || 'Phòng này';
+            
+            if (hotelEarlyLate) {
+              // Phân biệt early check-in và late check-out
+              const isEarlyCheckIn = lower.includes("early") || 
+                                    lower.includes("sớm") || 
+                                    lower.includes("check-in") ||
+                                    (lower.includes("nhận phòng") && lower.includes("sớm"));
+              
+              const isLateCheckOut = lower.includes("late") || 
+                                    lower.includes("muộn") || 
+                                    lower.includes("trễ") ||
+                                    lower.includes("check out") ||
+                                    lower.includes("checkout") ||
+                                    (lower.includes("trả phòng") && (lower.includes("muộn") || lower.includes("trễ")));
+              
+              let responseText = '';
+              
+              if (isEarlyCheckIn && !isLateCheckOut) {
+                // Chỉ hỏi về early check-in
+                responseText = `**Chính sách check-in sớm cho ${roomName}:**\n\n`;
+                responseText += `Early check-in từ 10:00 phụ thu 30% giá phòng/đêm.\n\n`;
+                responseText += `💡 **Lưu ý:**\n`;
+                responseText += `• Check-in tiêu chuẩn: 14:00\n`;
+                responseText += `• Nếu bạn đến sớm hơn 10:00, vui lòng liên hệ lễ tân để được hỗ trợ.\n`;
+                responseText += `• Phụ thu early check-in sẽ được tính vào tổng tiền khi thanh toán.\n\n`;
+                responseText += `📞 Để đặt early check-in, vui lòng liên hệ hotline ${hotline} hoặc thông báo khi đặt phòng.`;
+              } else if (isLateCheckOut && !isEarlyCheckIn) {
+                // Chỉ hỏi về late check-out
+                responseText = `**Chính sách check-out muộn cho ${roomName}:**\n\n`;
+                responseText += `Late check-out:\n`;
+                responseText += `• Đến 14:00: Phụ thu 30% giá phòng/đêm\n`;
+                responseText += `• Đến 18:00: Phụ thu 50% giá phòng/đêm\n`;
+                responseText += `• Sau 18:00: Tính 1 đêm tiền phòng\n\n`;
+                responseText += `💡 **Lưu ý:**\n`;
+                responseText += `• Check-out tiêu chuẩn: 12:00\n`;
+                responseText += `• Phụ thu late check-out sẽ được tính vào tổng tiền khi thanh toán.\n`;
+                responseText += `• Vui lòng thông báo trước khi check-out để được sắp xếp.\n\n`;
+                responseText += `📞 Để đặt late check-out, vui lòng liên hệ hotline ${hotline} hoặc thông báo khi đặt phòng.`;
+              } else {
+                // Hỏi cả hai hoặc không rõ
+                responseText = `**Chính sách early/late check-in/out cho ${roomName}:**\n\n`;
+                responseText += `📅 **Early Check-in:**\n`;
+                responseText += `• Từ 10:00: Phụ thu 30% giá phòng/đêm\n`;
+                responseText += `• Check-in tiêu chuẩn: 14:00\n\n`;
+                responseText += `📅 **Late Check-out:**\n`;
+                responseText += `• Đến 14:00: Phụ thu 30% giá phòng/đêm\n`;
+                responseText += `• Đến 18:00: Phụ thu 50% giá phòng/đêm\n`;
+                responseText += `• Sau 18:00: Tính 1 đêm tiền phòng\n`;
+                responseText += `• Check-out tiêu chuẩn: 12:00\n\n`;
+                responseText += `💡 **Lưu ý:**\n`;
+                responseText += `• Phụ thu sẽ được tính vào tổng tiền khi thanh toán.\n`;
+                responseText += `• Vui lòng thông báo trước để được sắp xếp.\n\n`;
+                responseText += `📞 Để đặt early check-in hoặc late check-out, vui lòng liên hệ hotline ${hotline} hoặc thông báo khi đặt phòng.`;
+              }
+              
+              return {
+                text: responseText,
+                rooms: null,
+                hasRooms: false
+              };
+            }
+            
+            // Fallback nếu không có chính sách
+            return {
+              text: `Hiện chưa có thông tin chi tiết về early/late check-in/out cho ${roomName}. Vui lòng liên hệ hotline ${hotline} để được hỗ trợ.`,
               rooms: null,
               hasRooms: false
             };
