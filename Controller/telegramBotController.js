@@ -1,9 +1,9 @@
 import TelegramBot from 'node-telegram-bot-api';
-// import dotenv from 'dotenv';
+import dotenv from 'dotenv';
 import { ChatMessage, ChatSession } from '../Models/ChatModel.js';
 import { getAIResponse, generateSessionId } from './chatController.js';
 import mongoose from 'mongoose';
-// dotenv.config();
+dotenv.config();
 let isMongoConnected = false;
 
 // Khởi tạo Telegram Bot (có thể bật/tắt qua ENV để tránh lỗi 409 khi chạy nhiều instance)
