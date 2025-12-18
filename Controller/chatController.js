@@ -149,7 +149,7 @@ const calculateTotalPriceWithChildSurcharge = (
 };
 
 // System prompt cho AI chatbot khách sạn
-const SYSTEM_PROMPT = `Bạn là trợ lý ảo của Rayal Park Hotel (5 sao, Đường Thùy Vân, Phường Thắng Tam, TP. Vũng Tàu, tỉnh Bà Rịa – Vũng Tàu, hotline 0901 234 567, email info@rayalpark.com).
+const SYSTEM_PROMPT = `Bạn là trợ lý ảo của Rayal Park Hotel (5 sao, Thùy Vân, Phường 1, Vũng Tàu, Hồ Chí Minh City, hotline 0901 234 567, email info@rayalpark.com).
 
 VỊ TRÍ ĐẶC BIỆT: Khách sạn tọa lạc tại Vũng Tàu, khu vực ven biển kết hợp hài hòa giữa biển và đồi núi, gần các bãi biển nổi tiếng (Bãi Sau, Bãi Trước, Bãi Dứa), khu vực núi (Núi Nhỏ, Núi Lớn, Hải đăng Vũng Tàu) và nhiều nhà hàng hải sản địa phương.
 
@@ -1480,7 +1480,7 @@ const getRuleBasedResponse = (userMessage, language = 'vi') => {
       'số điện thoại': 'Hotline của chúng tôi là: 0901 234 567. Bạn có thể gọi bất cứ lúc nào!',
       'giờ check-in': 'Giờ check-in là từ 14:00. Bạn có thể đến sớm hơn để tham quan khách sạn!',
       'giờ check-out': 'Giờ check-out là trước 12:00. Nếu cần check-out muộn, vui lòng liên hệ lễ tân!',
-      'địa chỉ': 'Địa chỉ khách sạn: 123 Đường ABC, Quận XYZ, TP. Hồ Chí Minh. Bạn có thể tìm trên Google Maps!',
+      'địa chỉ': 'Địa chỉ khách sạn: Thùy Vân, Phường 1, Vũng Tàu, Hồ Chí Minh City. Bạn có thể tìm trên Google Maps!',
       // ✅ THÊM: Booking-related responses
       'đặt phòng thì sao': 'Để đặt phòng, bạn vui lòng cung cấp:\n- Ngày nhận phòng (check-in)\n- Ngày trả phòng (check-out)\n- Số lượng khách\n- Email và số điện thoại\n\nTôi sẽ tìm phòng phù hợp cho bạn! 😊',
       'cách đặt phòng': 'Để đặt phòng, bạn vui lòng cung cấp:\n- Ngày nhận phòng (check-in)\n- Ngày trả phòng (check-out)\n- Số lượng khách\n- Email và số điện thoại\n\nTôi sẽ tìm phòng phù hợp cho bạn! 😊',
@@ -1549,7 +1549,7 @@ const getRuleBasedResponse = (userMessage, language = 'vi') => {
       'phone number': 'Our hotline is: 0901 234 567. You can call anytime!',
       'check-in time': 'Check-in time is from 2:00 PM. You can arrive earlier to explore the hotel!',
       'check-out time': 'Check-out time is before 12:00 PM. If you need late check-out, please contact reception!',
-      'address': 'Hotel address: 123 ABC Street, XYZ District, Ho Chi Minh City. You can find it on Google Maps!',
+      'address': 'Hotel address: Thùy Vân, Phường 1, Vũng Tàu, Hồ Chí Minh City. You can find it on Google Maps!',
       // ✅ THÊM: Booking-related responses (English)
       'how to book': 'To book a room, please provide:\n- Check-in date\n- Check-out date\n- Number of guests\n- Email and phone number\n\nI will find a suitable room for you! 😊',
       'want to book': 'To book a room, please provide:\n- Check-in date\n- Check-out date\n- Number of guests\n- Email and phone number\n\nI will find a suitable room for you! 😊',
@@ -2047,6 +2047,13 @@ const getPatternBasedResponse = async (userMessage, context = {}) => {
   );
 
   if (isViewRoomAmenitiesIntent && hasSelectedRoom) {
+    // ✅ QUAN TRỌNG: Khi hỏi về dịch vụ/tiện ích phòng, không hiển thị thông báo đặt phòng thành công
+    // Reset bookingCreated để tránh hiển thị thông báo đặt phòng khi chỉ hỏi thông tin
+    if (bookingContext) {
+      bookingContext.bookingCreated = false;
+      delete bookingContext.bookingId;
+    }
+    
     // ✅ SINGLE SOURCE OF TRUTH: LUÔN dùng context.selectedRoom
     const selectedRoom = context.selectedRoom;
     
@@ -2077,7 +2084,28 @@ const getPatternBasedResponse = async (userMessage, context = {}) => {
     if (roomId) {
       try {
         // ✅ Load thông tin phòng từ database để lấy amenities thật
-        const dbRoom = await Room.findById(roomId).lean();
+        // Populate includedServices để lấy thông tin Service nếu là ObjectId reference
+        // Không dùng .lean() ngay để populate hoạt động đúng
+        let dbRoom = await Room.findById(roomId).populate('includedServices', 'name category');
+        
+        // Convert sang plain object sau khi populate
+        if (dbRoom) {
+          dbRoom = dbRoom.toObject ? dbRoom.toObject() : dbRoom;
+        }
+        
+        // ✅ LOG để debug dữ liệu thật từ database
+        console.log('🔍 Raw room data from DB:', {
+          roomId: roomId,
+          roomName: dbRoom?.name,
+          hasIncludedServices: !!dbRoom?.includedServices,
+          includedServicesType: Array.isArray(dbRoom?.includedServices) ? 'array' : typeof dbRoom?.includedServices,
+          includedServicesLength: Array.isArray(dbRoom?.includedServices) ? dbRoom.includedServices.length : 0,
+          includedServicesSample: Array.isArray(dbRoom?.includedServices) && dbRoom.includedServices.length > 0 ? dbRoom.includedServices[0] : null,
+          hasPaidServices: !!dbRoom?.paidServices,
+          paidServicesType: Array.isArray(dbRoom?.paidServices) ? 'array' : typeof dbRoom?.paidServices,
+          paidServicesLength: Array.isArray(dbRoom?.paidServices) ? dbRoom.paidServices.length : 0,
+          paidServicesSample: Array.isArray(dbRoom?.paidServices) && dbRoom.paidServices.length > 0 ? dbRoom.paidServices[0] : null
+        });
         
         if (dbRoom) {
           const amenities = dbRoom.amenities || [];
@@ -2124,9 +2152,82 @@ const getPatternBasedResponse = async (userMessage, context = {}) => {
             amenitiesCount: updatedSelectedRoom.amenities.length
           });
 
-          // ✅ Trả lời dịch vụ cụ thể theo PHÒNG (ưu tiên dữ liệu phòng, fallback hotelInfo)
-          const included = Array.isArray(dbRoom.includedServices) ? dbRoom.includedServices : [];
+          // ✅ Trả lời dịch vụ cụ thể theo PHÒNG - CHỈ lấy từ database, không fallback hotelInfo
+          // Xử lý includedServices: có thể là array of String hoặc array of ObjectId (populated Service)
+          let included = [];
+          if (Array.isArray(dbRoom.includedServices) && dbRoom.includedServices.length > 0) {
+            included = dbRoom.includedServices.map(item => {
+              // Nếu là populated Service object, lấy name và map sang key
+              if (item && typeof item === 'object' && item.name) {
+                const serviceName = item.name;
+                // Map Service name sang key để hiển thị đúng
+                const nameToKeyMap = {
+                  'Buffet sáng': 'breakfast',
+                  'Phòng gym': 'gym',
+                  'Phòng gym (miễn phí)': 'gym',
+                  'Gym': 'gym',
+                  'Bãi đỗ xe': 'parking',
+                  'Parking': 'parking',
+                  'WiFi': 'wifi',
+                  'Đưa đón sân bay': 'airportPickup',
+                  'Airport Pickup': 'airportPickup',
+                  'Hồ bơi': 'pool',
+                  'Pool': 'pool',
+                  'Spa': 'spa',
+                  'Nhà hàng buffet sáng': 'breakfast',
+                  'Nhà hàng': 'breakfast'
+                };
+                
+                // Tìm key từ map
+                let key = nameToKeyMap[serviceName];
+                
+                // Nếu không tìm thấy, thử tìm theo pattern
+                if (!key) {
+                  const lowerName = serviceName.toLowerCase();
+                  if (lowerName.includes('gym') || lowerName.includes('phòng gym')) {
+                    key = 'gym';
+                  } else if (lowerName.includes('buffet') || lowerName.includes('sáng') || lowerName.includes('nhà hàng')) {
+                    key = 'breakfast';
+                  } else if (lowerName.includes('parking') || lowerName.includes('đỗ xe') || lowerName.includes('bãi đỗ')) {
+                    key = 'parking';
+                  } else if (lowerName.includes('wifi')) {
+                    key = 'wifi';
+                  } else if (lowerName.includes('airport') || lowerName.includes('sân bay') || lowerName.includes('đưa đón')) {
+                    key = 'airportPickup';
+                  } else if (lowerName.includes('pool') || lowerName.includes('hồ bơi')) {
+                    key = 'pool';
+                  } else if (lowerName.includes('spa')) {
+                    key = 'spa';
+                  }
+                }
+                
+                return key || serviceName; // Trả về key nếu có, nếu không thì trả về tên gốc
+              }
+              // Nếu là String, dùng trực tiếp
+              if (typeof item === 'string') {
+                // Nếu là ObjectId string (24 ký tự hex), bỏ qua
+                if (/^[0-9a-fA-F]{24}$/.test(item)) {
+                  return null;
+                }
+                return item;
+              }
+              // Nếu là ObjectId (chưa populate), bỏ qua vì không có tên
+              return null;
+            }).filter(Boolean);
+          }
+          
+          // Xử lý paidServices: luôn là array of objects với {key, priceNote, notes}
           const paid = Array.isArray(dbRoom.paidServices) ? dbRoom.paidServices : [];
+          
+          // ✅ LOG để debug
+          console.log('🔍 Room services from DB:', {
+            roomId: roomId,
+            roomName: dbRoom.name,
+            includedServices: included,
+            includedCount: included.length,
+            paidServices: paid,
+            paidCount: paid.length
+          });
           const hasIncluded = (key) => included.includes(key);
           const findPaid = (key) => paid.find(p => p?.key === key);
           const serviceCfg = hotelInfo?.services || {};
@@ -2134,6 +2235,12 @@ const getPatternBasedResponse = async (userMessage, context = {}) => {
 
           const breakfastKeywords = ["buffet sáng", "ăn sáng", "breakfast", "suất sáng"];
           const shuttleKeywords = ["đưa đón", "đưa rước", "airport", "sân bay", "shuttle", "đón tiễn"];
+
+          // ✅ PHÂN BIỆT: "dịch vụ" vs "tiện ích/chi tiết"
+          const isServiceOnlyQuery = lower.includes("dịch vụ") && !lower.includes("tiện ích") && !lower.includes("chi tiết");
+          const isAmenitiesQuery = lower.includes("tiện ích") || lower.includes("amenities");
+          const isFullDetailsQuery = lower.includes("phòng này có gì") || lower.includes("phòng đó có gì") || (lower.includes("xem") && lower.includes("chi tiết"));
+          const isServiceWithAmenitiesQuery = (lower.includes("dịch vụ") && lower.includes("tiện ích")) || (lower.includes("dịch vụ") && lower.includes("tiện nghi"));
 
           // Buffet sáng theo phòng
           if (matchesKeywords(breakfastKeywords)) {
@@ -2194,7 +2301,151 @@ const getPatternBasedResponse = async (userMessage, context = {}) => {
               hasRooms: false
             };
           }
+
+          // ✅ CHỈ TRẢ VỀ DỊCH VỤ (includedServices + paidServices) khi hỏi "dịch vụ"
+          if (isServiceOnlyQuery) {
+            const serviceTexts = [];
+            
+            // Dịch vụ miễn phí (included) - CHỈ lấy từ database
+            if (included.length > 0) {
+              const serviceNames = {
+                'breakfast': 'Buffet sáng',
+                'gym': 'Phòng gym',
+                'parking': 'Bãi đỗ xe',
+                'wifi': 'WiFi',
+                'airportPickup': 'Đưa đón sân bay',
+                'pool': 'Hồ bơi',
+                'spa': 'Spa'
+              };
+              const includedList = included.map(key => {
+                // Xử lý cả ObjectId string và String key
+                const keyStr = typeof key === 'string' ? key : (key?.toString?.() || String(key));
+                // Nếu là ObjectId string (24 ký tự hex), bỏ qua vì không có tên dịch vụ
+                if (/^[0-9a-fA-F]{24}$/.test(keyStr)) {
+                  console.warn(`⚠️ Included service is ObjectId without populate: ${keyStr}`);
+                  return null; // Bỏ qua ObjectId không có tên
+                }
+                const name = serviceNames[keyStr] || keyStr;
+                return `• ${name} (miễn phí)`;
+              }).filter(Boolean); // Loại bỏ null
+              
+              if (includedList.length > 0) {
+                serviceTexts.push(`**Dịch vụ miễn phí:**\n${includedList.join('\n')}`);
+              } else {
+                serviceTexts.push(`**Dịch vụ miễn phí:**\n• Phòng này chưa có thông tin dịch vụ miễn phí cụ thể.`);
+              }
+            } else {
+              serviceTexts.push(`**Dịch vụ miễn phí:**\n• Phòng này chưa có thông tin dịch vụ miễn phí cụ thể.`);
+            }
+            
+            // Dịch vụ có phí (paid) - CHỈ lấy từ database
+            if (paid.length > 0) {
+              const paidList = paid
+                .filter(p => p && p.key) // Chỉ lấy các item có key hợp lệ
+                .map(p => {
+                  const serviceNames = {
+                    'breakfast': 'Buffet sáng',
+                    'airportPickup': 'Đưa đón sân bay',
+                    'spa': 'Spa & Massage',
+                    'laundry': 'Giặt ủi',
+                    'extraBed': 'Giường phụ'
+                  };
+                  const name = serviceNames[p.key] || p.key || 'Dịch vụ';
+                  const price = p.priceNote ? ` (${p.priceNote})` : '';
+                  const note = p.notes ? ` - ${p.notes}` : '';
+                  return `• ${name}${price}${note}`;
+                });
+              
+              if (paidList.length > 0) {
+                serviceTexts.push(`\n**Dịch vụ có phí:**\n${paidList.join('\n')}`);
+              } else {
+                serviceTexts.push(`\n**Dịch vụ có phí:**\n• Phòng này chưa có thông tin dịch vụ có phí cụ thể.`);
+              }
+            } else {
+              serviceTexts.push(`\n**Dịch vụ có phí:**\n• Phòng này chưa có thông tin dịch vụ có phí cụ thể.`);
+            }
+            
+            // ✅ Nếu không có dịch vụ nào, thông báo rõ ràng
+            if (included.length === 0 && paid.length === 0) {
+              return {
+                text: `**Dịch vụ của ${dbRoom.name || selectedRoom.name}:**\n\nPhòng này hiện chưa có thông tin dịch vụ cụ thể trong hệ thống.\n\n💡 Để biết thêm về các dịch vụ khách sạn, vui lòng liên hệ hotline ${hotline} hoặc hỏi về dịch vụ chung của khách sạn.`,
+                rooms: null,
+                hasRooms: false
+              };
+            }
+            
+            return {
+              text: `**Dịch vụ của ${dbRoom.name || selectedRoom.name}:**\n\n${serviceTexts.join('\n')}\n\n💡 Bạn có thể đặt thêm dịch vụ khi check-in hoặc liên hệ hotline ${hotline} để đặt trước.`,
+              rooms: null,
+              hasRooms: false
+            };
+          }
+
+          // ✅ TRẢ VỀ ĐẦY ĐỦ (amenities + services) khi hỏi "tiện ích" hoặc "chi tiết" hoặc "dịch vụ kèm tiện nghi"
+          if (isAmenitiesQuery || isFullDetailsQuery || isServiceWithAmenitiesQuery) {
+            const roomInfo = `**${dbRoom.name || selectedRoom.name}**\n\n` +
+              `• **Loại phòng:** ${dbRoom.roomType || 'N/A'}\n` +
+              `• **Sức chứa:** ${dbRoom.maxOccupancy || 'N/A'} người\n` +
+              `• **Diện tích:** ${dbRoom.size || 'N/A'} m²\n` +
+              `• **Loại giường:** ${dbRoom.bedType || 'N/A'}\n` +
+              (dbRoom.view ? `• **Hướng phòng:** ${dbRoom.view}\n` : '') +
+              `• **Giá/đêm:** ${dbRoom.pricePerNight?.toLocaleString('vi-VN') || 'Đang cập nhật'} VNĐ\n\n` +
+              `**Tiện ích của phòng:**\n${amenitiesText}`;
+            
+            // Thêm dịch vụ nếu hỏi "dịch vụ kèm tiện nghi"
+            if (isServiceWithAmenitiesQuery) {
+              const serviceTexts = [];
+              if (included.length > 0) {
+                const serviceNames = {
+                  'breakfast': 'Buffet sáng',
+                  'gym': 'Phòng gym',
+                  'parking': 'Bãi đỗ xe',
+                  'wifi': 'WiFi',
+                  'airportPickup': 'Đưa đón sân bay',
+                  'pool': 'Hồ bơi',
+                  'spa': 'Spa'
+                };
+                const includedList = included.map(key => {
+                  const name = serviceNames[key] || key;
+                  return `• ${name} (miễn phí)`;
+                });
+                serviceTexts.push(`\n**Dịch vụ miễn phí:**\n${includedList.join('\n')}`);
+              }
+              if (paid.length > 0) {
+                const paidList = paid.map(p => {
+                  const serviceNames = {
+                    'breakfast': 'Buffet sáng',
+                    'airportPickup': 'Đưa đón sân bay',
+                    'spa': 'Spa & Massage',
+                    'laundry': 'Giặt ủi',
+                    'extraBed': 'Giường phụ'
+                  };
+                  const name = serviceNames[p?.key] || p?.key || 'Dịch vụ';
+                  const price = p?.priceNote ? ` (${p.priceNote})` : '';
+                  const note = p?.notes ? ` - ${p.notes}` : '';
+                  return `• ${name}${price}${note}`;
+                });
+                serviceTexts.push(`\n**Dịch vụ có phí:**\n${paidList.join('\n')}`);
+              }
+              roomInfo += serviceTexts.join('\n');
+            }
+            
+            roomInfo += (dbRoom.description ? `\n\n**Mô tả:**\n${dbRoom.description}` : '');
+            
+            // Tạo roomDetailLink
+            const baseUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+            const roomDetailLink = `${baseUrl}/rooms/${roomId}`;
+            
+            return {
+              text: roomInfo + `\n\n👉 Nhấn vào [Xem chi tiết đầy đủ](${roomDetailLink}) để xem thêm hình ảnh và mô tả chi tiết.`,
+              rooms: [updatedSelectedRoom], // ✅ Trả về updatedSelectedRoom thay vì selectedRoom cũ
+              hasRooms: true,
+              roomDetailLink: roomDetailLink,
+              bookingContext: context.bookingContext
+            };
+          }
           
+          // ✅ FALLBACK: Nếu không match gì cả, trả về chi tiết đầy đủ (giữ nguyên logic cũ)
           const roomInfo = `**${dbRoom.name || selectedRoom.name}**\n\n` +
             `• **Loại phòng:** ${dbRoom.roomType || 'N/A'}\n` +
             `• **Sức chứa:** ${dbRoom.maxOccupancy || 'N/A'} người\n` +
@@ -3039,6 +3290,11 @@ const getPatternBasedResponse = async (userMessage, context = {}) => {
   if (capacityPattern && !hasDates) {
     if (capacityPattern[1]) {
       const guests = parseInt(capacityPattern[1]);
+      // ✅ Lưu số khách vào bookingContext để sử dụng khi user cung cấp ngày
+      if (!context.bookingContext) context.bookingContext = {};
+      context.bookingContext.guests = guests;
+      context.bookingContext.maxOccupancy = guests;
+      
       let roomSuggestion = '';
       if (guests <= 2) {
         roomSuggestion = 'Phòng Đơn hoặc Đôi (1-2 người)';
@@ -3055,7 +3311,8 @@ const getPatternBasedResponse = async (userMessage, context = {}) => {
               '📅 Ngày trả phòng\n\n' +
               'Tôi sẽ tìm phòng có sức chứa phù hợp cho bạn! 👥',
         rooms: null,
-        hasRooms: false
+        hasRooms: false,
+        bookingContext: context.bookingContext
       };
     } else {
       return {
@@ -8488,18 +8745,31 @@ const getAIResponse = async (userMessage, context = {}, conversationHistory = []
       console.log(`✅ Using saved requestedView from context: ${context.requestedView}`);
     }
     
+    // ✅ QUAN TRỌNG: Nếu không có số khách trong message nhưng có trong bookingContext (từ message trước), sử dụng nó
+    if (!searchCriteria.maxOccupancy && context.bookingContext) {
+      const savedGuests = context.bookingContext.guests || context.bookingContext.maxOccupancy;
+      if (savedGuests) {
+        searchCriteria.maxOccupancy = savedGuests;
+        console.log(`✅ Using saved guests from bookingContext: ${savedGuests}`);
+      }
+    }
+    
     // 🚫 Đừng tìm phòng nếu chưa có đủ ngày + số khách, tránh trả list mặc định
     const hasDatesInCriteria = searchCriteria.checkInDate && searchCriteria.checkOutDate;
     const hasGuestsInCriteria = searchCriteria.guests || searchCriteria.maxOccupancy || searchCriteria.adults;
     
-    // ✅ Lưu dates vào context nếu có
-    if (searchCriteria.checkInDate || searchCriteria.checkOutDate) {
+    // ✅ Lưu dates và guests vào context nếu có
+    if (searchCriteria.checkInDate || searchCriteria.checkOutDate || searchCriteria.maxOccupancy) {
       if (!context.bookingContext) context.bookingContext = {};
       if (searchCriteria.checkInDate) {
         context.bookingContext.checkInDate = searchCriteria.checkInDate;
       }
       if (searchCriteria.checkOutDate) {
         context.bookingContext.checkOutDate = searchCriteria.checkOutDate;
+      }
+      if (searchCriteria.maxOccupancy) {
+        context.bookingContext.maxOccupancy = searchCriteria.maxOccupancy;
+        context.bookingContext.guests = searchCriteria.maxOccupancy;
       }
     }
     
@@ -8508,7 +8778,8 @@ const getAIResponse = async (userMessage, context = {}, conversationHistory = []
       console.log('ℹ️ Skipping searchRooms - missing dates or guests for room search request', {
         hasDatesInCriteria,
         hasGuestsInCriteria,
-        searchCriteria
+        searchCriteria,
+        savedGuestsFromContext: context.bookingContext?.guests || context.bookingContext?.maxOccupancy
       });
       roomSearchResults = null;
     } else {
@@ -11157,7 +11428,7 @@ export const chatWithAI = asyncHandler(async (req, res) => {
             }))
           };
         } else if (selectedRoomIndex >= 0 && selectedRoomIndex < context.lastRoomSearchResults.length) {
-          const selectedRoom = context.lastRoomSearchResults[selectedRoomIndex];
+          let selectedRoom = context.lastRoomSearchResults[selectedRoomIndex];
         
         // ✅ QUAN TRỌNG: Log toàn bộ lastRoomSearchResults để debug thứ tự
         console.log(`🔍 User selected room #${bookingIntent.roomNumber} (index ${selectedRoomIndex}):`, {
@@ -11189,8 +11460,33 @@ export const chatWithAI = asyncHandler(async (req, res) => {
             matches: context.lastRoomSearchResults[selectedRoomIndex]?.name === selectedRoom.name
           });
           
+          // ✅ DEFENSIVE: Kiểm tra _id trước khi sử dụng
+          // Nếu selectedRoom từ lastRoomSearchResults thiếu _id, tìm lại từ database
+          if (!selectedRoom._id) {
+            console.warn('⚠️ selectedRoom._id is undefined, trying to find room from database by name');
+            try {
+              const Room = (await import('../Models/RoomModel.js')).default;
+              const foundRoom = await Room.findOne({ name: selectedRoom.name }).lean();
+              if (foundRoom && foundRoom._id) {
+                // ✅ Merge dữ liệu từ database vào selectedRoom
+                selectedRoom = { ...selectedRoom, ...foundRoom };
+                console.log('✅ Found room from database:', {
+                  name: selectedRoom.name,
+                  roomId: selectedRoom._id
+                });
+              } else {
+                console.error('❌ Cannot find room in database:', selectedRoom.name);
+                // Không thể tiếp tục nếu không có _id
+                return;
+              }
+            } catch (findError) {
+              console.error('❌ Error finding room from database:', findError);
+              return;
+            }
+          }
+          
           // ✅ VALIDATION: Kiểm tra lại availability trước khi chọn phòng
-          if (bookingContext.checkInDate && bookingContext.checkOutDate) {
+          if (bookingContext.checkInDate && bookingContext.checkOutDate && selectedRoom._id) {
             const isStillAvailable = await checkRoomAvailability(
               selectedRoom._id,
               bookingContext.checkInDate,
@@ -11200,17 +11496,20 @@ export const chatWithAI = asyncHandler(async (req, res) => {
             if (!isStillAvailable) {
               // Phòng đã bị book bởi người khác, thông báo và gợi ý phòng khác
               console.warn(`⚠️ Room ${selectedRoom.name} is no longer available for selected dates`);
+              const selectedRoomId = selectedRoom._id.toString ? selectedRoom._id.toString() : String(selectedRoom._id);
               context.roomNoLongerAvailable = {
                 roomName: selectedRoom.name,
-                roomId: selectedRoom._id.toString(),
+                roomId: selectedRoomId,
                 checkIn: bookingContext.checkInDate,
                 checkOut: bookingContext.checkOutDate
               };
               
               // Xóa phòng không còn trống khỏi lastRoomSearchResults
-              context.lastRoomSearchResults = context.lastRoomSearchResults.filter(
-                r => r._id.toString() !== selectedRoom._id.toString()
-              );
+              context.lastRoomSearchResults = context.lastRoomSearchResults.filter(r => {
+                if (!r || !r._id) return true;
+                const rId = r._id.toString ? r._id.toString() : String(r._id);
+                return rId !== selectedRoomId;
+              });
               
               // Nếu còn phòng khác, gợi ý lại
               if (context.lastRoomSearchResults.length > 0) {
@@ -11222,7 +11521,10 @@ export const chatWithAI = asyncHandler(async (req, res) => {
             }
           }
           
-          bookingContext.roomId = selectedRoom._id.toString();
+          // ✅ Đảm bảo _id tồn tại trước khi sử dụng
+          const selectedRoomId = selectedRoom._id.toString ? selectedRoom._id.toString() : String(selectedRoom._id);
+          
+          bookingContext.roomId = selectedRoomId;
           bookingContext.roomName = selectedRoom.name;
           bookingContext.roomPrice = selectedRoom.pricePerNight;
           bookingContext.roomQuantity = bookingIntent.roomQuantity || 1;
@@ -11235,8 +11537,8 @@ export const chatWithAI = asyncHandler(async (req, res) => {
           } : null;
           
           context.selectedRoom = {
-            _id: selectedRoom._id.toString(),
-            id: selectedRoom._id.toString(), // ✅ Thêm id để tương thích
+            _id: selectedRoomId,
+            id: selectedRoomId, // ✅ Thêm id để tương thích
             name: selectedRoom.name,
             pricePerNight: selectedRoom.pricePerNight,
             roomType: selectedRoom.roomType,
@@ -12079,34 +12381,23 @@ export const chatWithAI = asyncHandler(async (req, res) => {
           })
         : null;
       const bookingFormLink = bookingLink || fallbackBookingLink;
-      const paymentLinkToUse = paymentLink || `${process.env.FRONTEND_URL || 'http://localhost:5173'}/payment?bookingId=${bookingContext.bookingId}`;
       const linkText = context.language === 'en' 
-       ? `\n\n✅ Booking created successfully! Booking ID: ${bookingContext.bookingId}\n\n👉 Review your pre-filled booking form here: [View Booking](booking:${bookingFormLink})\n💳 Click here to complete payment: [Pay Now](payment:${paymentLinkToUse})`
-      : `\n\n✅ Đã tạo đơn đặt phòng thành công! Mã đặt phòng: ${bookingContext.bookingId}\n\n👉 Xem lại thông tin đơn đặt phòng (đã điền sẵn) tại đây: [Xem đơn đặt phòng](booking:${bookingFormLink})\n💳 Nhấn vào link này để thanh toán: [Thanh toán ngay](payment:${paymentLinkToUse})`;
+       ? `\n\n✅ Booking created successfully! Booking ID: ${bookingContext.bookingId}\n\n👉 Open your booking form here: [View booking link](booking:${bookingFormLink})`
+      : `\n\n✅ Đã tạo đơn đặt phòng thành công! Mã đặt phòng: ${bookingContext.bookingId}\n\n👉 Mở lại form đặt phòng (đã điền sẵn) tại đây: [Xem link đặt phòng](booking:${bookingFormLink})`;
       finalResponseText = responseText + linkText;
     } else if (bookingLink || bookingContext.roomDetailLink) {
-      // ✅ Có booking link hoặc room detail link - hiển thị link để user xem chi tiết/đặt phòng
-      const links = [];
-      
-      // Thêm link xem chi tiết phòng nếu có
-      if (bookingContext.roomDetailLink) {
-        const detailLinkText = context.language === 'en'
-          ? `🔍 [View Room Details](${bookingContext.roomDetailLink})`
-          : `🔍 [Xem chi tiết phòng](${bookingContext.roomDetailLink})`;
-        links.push(detailLinkText);
-      }
-      
-      // Thêm booking link nếu có
+      // ✅ Ưu tiên chỉ hiển thị 1 link đặt phòng
+      let linkText;
       if (bookingLink) {
-        const bookingLinkText = context.language === 'en'
-          ? `📝 [Book Now](${bookingLink})`
-          : `📝 [Đặt phòng ngay](${bookingLink})`;
-        links.push(bookingLinkText);
+        linkText = context.language === 'en'
+          ? `\n\n✅ I've prepared your booking link:\n📝 [View booking link](${bookingLink})`
+          : `\n\n✅ Tôi đã chuẩn bị link đặt phòng cho bạn:\n📝 [Xem link đặt phòng](${bookingLink})`;
+      } else {
+        // Fallback: chỉ có link xem chi tiết phòng
+        linkText = context.language === 'en'
+          ? `\n\n🔍 You can view room details here:\n🔍 [View Room Details](${bookingContext.roomDetailLink})`
+          : `\n\n🔍 Bạn có thể xem chi tiết phòng tại đây:\n🔍 [Xem chi tiết phòng](${bookingContext.roomDetailLink})`;
       }
-      
-      const linkText = context.language === 'en'
-        ? `\n\n✅ I've prepared the following links for you:\n${links.join('\n')}`
-        : `\n\n✅ Tôi đã chuẩn bị các link sau cho bạn:\n${links.join('\n')}`;
       finalResponseText = responseText + linkText;
     } else if (bookingContext.roomId || context.selectedRoom) {
       // ✅ Có roomId hoặc selectedRoom - LUÔN tạo booking link ngay để khách có thể đặt phòng
@@ -12158,28 +12449,21 @@ export const chatWithAI = asyncHandler(async (req, res) => {
       
         // ✅ QUAN TRỌNG: Luôn thêm booking link vào response khi có phòng đã chọn
       const linkText = context.language === 'en'
-          ? `\n\n✅ I've prepared the booking link for you:\n📝 [Book Now - Complete Your Reservation](${quickBookingLink})\n\nYou can fill in any missing information (dates, personal details) on the booking form.`
-          : `\n\n✅ Tôi đã chuẩn bị link đặt phòng cho bạn:\n📝 [Đặt phòng ngay - Hoàn tất đặt phòng](${quickBookingLink})\n\nBạn có thể điền các thông tin còn thiếu (ngày, thông tin cá nhân) trên form đặt phòng.`;
+          ? `\n\n✅ I've prepared your booking link:\n📝 [View booking link](${quickBookingLink})\n\nYou can fill in any missing information (dates, personal details) on the booking form.`
+          : `\n\n✅ Tôi đã chuẩn bị link đặt phòng cho bạn:\n📝 [Xem link đặt phòng](${quickBookingLink})\n\nBạn có thể điền các thông tin còn thiếu (ngày, thông tin cá nhân) trên form đặt phòng.`;
       finalResponseText = responseText + linkText;
         
-        // ✅ Lưu booking link và roomDetailLink vào biến để trả về response
+        // ✅ Lưu booking link vào biến để trả về response
         if (!bookingLink) {
           bookingLink = quickBookingLink;
         }
-        // ✅ QUAN TRỌNG: Khai báo finalRoomDetailLink nếu chưa có
-        if (typeof finalRoomDetailLink === 'undefined') {
-          finalRoomDetailLink = null;
-        }
-        if (!finalRoomDetailLink) {
-          finalRoomDetailLink = quickRoomDetailLink;
-        }
-        // ✅ Cũng lưu vào bookingContext để có thể sử dụng lại
+        // ✅ Cũng lưu roomDetailLink vào bookingContext để có thể sử dụng lại
         if (!bookingContext.roomDetailLink) {
           bookingContext.roomDetailLink = quickRoomDetailLink;
         }
         console.log('✅ Created links for selected room:', {
           bookingLink: bookingLink,
-          roomDetailLink: finalRoomDetailLink,
+          roomDetailLink: quickRoomDetailLink,
           roomId: roomIdToUse,
           hasSelectedRoom: !!context.selectedRoom,
           hasBookingContextRoomId: !!bookingContext.roomId
@@ -12353,7 +12637,7 @@ export const chatWithAI = asyncHandler(async (req, res) => {
     if (shouldProcessRoomsFromAI && rooms && rooms.length > 0 && !roomsData) {
       // ✅ Nếu có bookingContext.roomName, chỉ lấy phòng khớp với tên đó
       if (bookingContext && bookingContext.roomName) {
-        const matchingRoom = rooms.find(r => {
+        let matchingRoom = rooms.find(r => {
           const roomName = r.name || '';
           const bookingRoomName = bookingContext.roomName || '';
           return roomName.toLowerCase().includes(bookingRoomName.toLowerCase()) ||
@@ -12366,18 +12650,46 @@ export const chatWithAI = asyncHandler(async (req, res) => {
             foundRoomName: matchingRoom.name,
             roomId: matchingRoom._id
           });
-          roomsData = [{
-            id: matchingRoom._id.toString(),
-            name: matchingRoom.name,
-            roomType: matchingRoom.roomType,
-            pricePerNight: matchingRoom.pricePerNight,
-            maxOccupancy: matchingRoom.maxOccupancy,
-            view: matchingRoom.view,
-            image: matchingRoom.image,
-          amenities: matchingRoom.amenities || [],
-          detailLink: createRoomDetailLink(matchingRoom._id)
-          }];
-          hasRooms = true;
+          
+          // ✅ DEFENSIVE: Kiểm tra _id trước khi sử dụng
+          if (!matchingRoom._id) {
+            console.warn('⚠️ matchingRoom._id is undefined, trying to find room from database by name');
+            // Thử tìm lại từ database
+            try {
+              const Room = (await import('../Models/RoomModel.js')).default;
+              const foundRoom = await Room.findOne({ name: matchingRoom.name }).lean();
+              if (foundRoom && foundRoom._id) {
+                // ✅ Merge dữ liệu từ database vào matchingRoom
+                matchingRoom = { ...matchingRoom, ...foundRoom };
+              } else {
+                console.error('❌ Cannot find room in database:', matchingRoom.name);
+                // Bỏ qua nếu không tìm thấy
+                matchingRoom = null;
+              }
+            } catch (findError) {
+              console.error('❌ Error finding room from database:', findError);
+              matchingRoom = null;
+            }
+          }
+          
+          // ✅ Chỉ tạo roomsData nếu matchingRoom hợp lệ và có _id
+          if (matchingRoom && matchingRoom._id) {
+            const roomId = matchingRoom._id.toString ? matchingRoom._id.toString() : String(matchingRoom._id);
+            roomsData = [{
+              id: roomId,
+              name: matchingRoom.name,
+              roomType: matchingRoom.roomType,
+              pricePerNight: matchingRoom.pricePerNight,
+              maxOccupancy: matchingRoom.maxOccupancy,
+              view: matchingRoom.view,
+              image: matchingRoom.image,
+              amenities: matchingRoom.amenities || [],
+              detailLink: createRoomDetailLink(matchingRoom._id)
+            }];
+            hasRooms = true;
+          } else {
+            console.warn('⚠️ Cannot create roomsData: matchingRoom is invalid or missing _id');
+          }
         } else {
           // Nếu không tìm thấy phòng khớp, lấy tất cả (fallback)
           console.warn('⚠️ No matching room found for bookingContext.roomName, using all rooms:', {
@@ -12774,6 +13086,21 @@ export const chatWithAI = asyncHandler(async (req, res) => {
       paymentLinkFinal = paymentLink || `${baseUrl}/payment?bookingId=${bookingContext.bookingId}`;
       console.log('✅ Created paymentLinkFinal:', paymentLinkFinal);
     }
+
+    // ✅ Nếu đã có finalBookingLink nhưng trong finalResponseText CHƯA có link đặt phòng
+    // (trường hợp AI fallback chỉ trả về tóm tắt, không có link), thì tự động thêm link ngắn
+    if (
+      finalBookingLink &&
+      typeof finalResponseText === 'string' &&
+      !finalResponseText.includes('[Xem link đặt phòng]') &&
+      !finalResponseText.includes('[View booking link]')
+    ) {
+      const extraBookingText = context.language === 'en'
+        ? `\n\n✅ You can open your booking form here:\n📝 [View booking link](${finalBookingLink})`
+        : `\n\n✅ Bạn có thể mở form đặt phòng tại đây:\n📝 [Xem link đặt phòng](${finalBookingLink})`;
+      finalResponseText += extraBookingText;
+      console.log('✅ Appended finalBookingLink to response text (fallback).');
+    }
     
     // ✅ QUAN TRỌNG: Kiểm tra lần cuối trước khi trả response - đảm bảo phòng đã chọn có trong roomsData
     // Logic này chạy CUỐI CÙNG để đảm bảo không bỏ sót phòng nào
@@ -13014,18 +13341,35 @@ export const chatWithAI = asyncHandler(async (req, res) => {
         context.bookingContext &&
         context.bookingContext.checkInDate &&
         context.bookingContext.checkOutDate;
+      const hasAllPersonalInfo =
+        context.bookingContext &&
+        context.bookingContext.fullName &&
+        context.bookingContext.email &&
+        context.bookingContext.phone;
 
       if (context.language === 'en') {
-        finalResponseText = `You selected **${context.selectedRoom.name}**. 
-Just click the \"Book now\" button on the room card. 
-To help you complete the booking faster, please share your **full name, email, and phone number** and our staff will assist you.`;
+        if (hasDates && hasAllPersonalInfo) {
+          finalResponseText = `You selected **${context.selectedRoom.name}**.\nI've kept your personal information from the previous step and updated it for this room.`;
+          if (finalBookingLink) {
+            finalResponseText += `\n\n✅ You can open your booking form here:\n📝 [View booking link](${finalBookingLink})`;
+          }
+        } else {
+          finalResponseText = `You selected **${context.selectedRoom.name}**. \nJust click the \"Book now\" button on the room card. \nTo help you complete the booking faster, please share your **full name, email, and phone number** and our staff will assist you.`;
+        }
       } else {
-        finalResponseText = hasDates
-          ? `Bạn đã chọn **${context.selectedRoom.name}**, phòng đã sẵn sàng 😊
+        if (hasDates && hasAllPersonalInfo) {
+          finalResponseText = `Bạn đã chọn **${context.selectedRoom.name}**, phòng đã sẵn sàng 😊\nMình đã giữ lại thông tin cá nhân bạn cung cấp trước đó và áp dụng cho phòng này.`;
+          if (finalBookingLink) {
+            finalResponseText += `\n\n✅ Bạn có thể mở form đặt phòng tại đây:\n📝 [Xem link đặt phòng](${finalBookingLink})`;
+          }
+        } else {
+          finalResponseText = hasDates
+            ? `Bạn đã chọn **${context.selectedRoom.name}**, phòng đã sẵn sàng 😊
 Bạn chỉ cần nhấn nút \"Đặt phòng ngay\" trên thẻ phòng.
 Nếu muốn mình hỗ trợ giữ phòng và hoàn tất đặt chỗ nhanh hơn, hãy gửi giúp mình **Họ và tên, email, số điện thoại** nhé.`
-          : `Bạn đã chọn **${context.selectedRoom.name}** 😊
+            : `Bạn đã chọn **${context.selectedRoom.name}** 😊
 Để mình kiểm tra và giữ phòng cho bạn, vui lòng cho mình **ngày nhận – ngày trả** và **số khách**, sau đó gửi thêm **Họ và tên, email, số điện thoại** để mình tạo link đặt phòng và hỗ trợ bạn hoàn tất nhé.`;
+        }
       }
 
       if (finalRoomsData && finalRoomsData.length > 0) {

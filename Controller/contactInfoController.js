@@ -9,11 +9,11 @@ export const getContactInfo = asyncHandler(async (req, res) => {
   if (!contactInfo) {
     contactInfo = new ContactInfo({
       hotelName: "Rayal Park Hotel",
-      address: "123 Đường ABC, Quận 1, TP.HCM, Việt Nam",
-      province: "TP. Hồ Chí Minh",
-      city: "TP. Hồ Chí Minh",
+      address: "Thùy Vân, Phường 1, Vũng Tàu, Hồ Chí Minh City",
+      province: "Hồ Chí Minh City",
+      city: "Vũng Tàu",
       postalCode: "700000",
-      coordinates: { lat: 10.7769, lng: 106.7009 },
+      coordinates: { lat: 10.3459, lng: 107.0842 },
       phone: {
         main: "0901 234 567",
         international: "+84 901 234 567"
