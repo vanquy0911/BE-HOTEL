@@ -280,6 +280,13 @@ const parseDateFromText = (text) => {
     return dayAfter;
   }
   
+  // Ngày mốt (= ngày kia, tức là 2 ngày sau hôm nay)
+  if (lowerText.includes("ngày mốt")) {
+    const dayAfter = new Date(today);
+    dayAfter.setDate(dayAfter.getDate() + 2);
+    return dayAfter;
+  }
+  
   // Parse định dạng dd/mm hoặc dd/mm/yyyy
   const dateMatch = text.match(/(\d{1,2})\/(\d{1,2})(?:\/(\d{4}))?/);
   if (dateMatch) {
@@ -464,21 +471,41 @@ const parseRoomSearchRequest = (userMessage) => {
 
   // ✅ Parse ngày check-in/out từ text
   const datePatterns = [
-    /(?:từ|from|check-in|nhận phòng).*?(\d{1,2}\/\d{1,2}(?:\/\d{4})?|hôm nay|ngày mai|ngày kia|today|tomorrow).*?(?:đến|to|check-out|trả phòng).*?(\d{1,2}\/\d{1,2}(?:\/\d{4})?|hôm nay|ngày mai|ngày kia|today|tomorrow)/i,
+    // Pattern cho "ngày mai ngày mốt" hoặc "mai mốt"
+    /(?:ngày mai)\s*(?:ngày mốt|mốt)/i,
+    /(?:từ|from|check-in|nhận phòng).*?(\d{1,2}\/\d{1,2}(?:\/\d{4})?|hôm nay|ngày mai|ngày kia|ngày mốt|today|tomorrow).*?(?:đến|to|check-out|trả phòng).*?(\d{1,2}\/\d{1,2}(?:\/\d{4})?|hôm nay|ngày mai|ngày kia|ngày mốt|today|tomorrow)/i,
     /(\d{1,2}\/\d{1,2}(?:\/\d{1,2})?)\s*(?:đến|-|to)\s*(\d{1,2}\/\d{1,2}(?:\/\d{1,2})?)/i
   ];
   
-  for (const pattern of datePatterns) {
-    const match = userMessage.match(pattern);
-    if (match) {
-      criteria.checkInDate = parseDateFromText(match[1]);
-      criteria.checkOutDate = parseDateFromText(match[2]);
-      if (criteria.checkInDate && criteria.checkOutDate && criteria.checkInDate >= criteria.checkOutDate) {
-        // Nếu check-out <= check-in, thêm 1 ngày cho check-out
-        criteria.checkOutDate = new Date(criteria.checkInDate);
-        criteria.checkOutDate.setDate(criteria.checkOutDate.getDate() + 1);
+  // ✅ Đặc biệt: "ngày mai ngày mốt" = check-in ngày mai, check-out ngày mốt
+  if (/ngày mai\s*(?:ngày mốt|mốt)/i.test(userMessage)) {
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    tomorrow.setHours(0, 0, 0, 0);
+    
+    const dayAfterTomorrow = new Date();
+    dayAfterTomorrow.setDate(dayAfterTomorrow.getDate() + 2);
+    dayAfterTomorrow.setHours(0, 0, 0, 0);
+    
+    criteria.checkInDate = tomorrow;
+    criteria.checkOutDate = dayAfterTomorrow;
+    console.log('✅ Parsed "ngày mai ngày mốt":', { checkIn: tomorrow, checkOut: dayAfterTomorrow });
+  }
+  
+  // Chỉ parse từ patterns nếu chưa có dates (tránh ghi đè "ngày mai ngày mốt")
+  if (!criteria.checkInDate || !criteria.checkOutDate) {
+    for (const pattern of datePatterns) {
+      const match = userMessage.match(pattern);
+      if (match && match[1] && match[2]) {
+        criteria.checkInDate = parseDateFromText(match[1]);
+        criteria.checkOutDate = parseDateFromText(match[2]);
+        if (criteria.checkInDate && criteria.checkOutDate && criteria.checkInDate >= criteria.checkOutDate) {
+          // Nếu check-out <= check-in, thêm 1 ngày cho check-out
+          criteria.checkOutDate = new Date(criteria.checkInDate);
+          criteria.checkOutDate.setDate(criteria.checkOutDate.getDate() + 1);
+        }
+        break;
       }
-      break;
     }
   }
   
@@ -701,10 +728,11 @@ const parseExploreIntent = (userMessage) => {
   // Keywords cho địa điểm gần
   const nearbyKeywords = [
     'địa điểm gần', 'đi đâu gần', 'nhà hàng gần', 'điểm tham quan',
-    'mua sắm gần', 'quán ăn gần', 'đi chơi đâu', 'du lịch gần',
-    'địa điểm tham quan gần', 'ăn uống gần', 'shopping gần',
+    'mua sắm gần', 'quán ăn gần', 'đi chơi đâu', 'đi chơi được đâu', 'đi chơi ở đâu',
+    'du lịch gần', 'địa điểm tham quan gần', 'ăn uống gần', 'shopping gần',
     'bệnh viện gần', 'ngân hàng gần', 'nearby', 'restaurant near',
-    'attraction', 'shopping near'
+    'attraction', 'shopping near', 'đi đâu chơi', 'chơi gì', 'tham quan',
+    'biển', 'bãi biển', 'núi', 'hải đăng', 'vũng tàu có gì'
   ];
   
   // Keywords cho khám phá tổng hợp
@@ -1168,25 +1196,44 @@ const parseBookingIntent = (userMessage, context = {}) => {
   }
 
   // ✅ Kiểm tra xem có ngày check-in/out không (sử dụng parseDateFromText)
+  // ✅ Đặc biệt: "ngày mai ngày mốt" = check-in ngày mai, check-out ngày mốt
+  if (/ngày mai\s*(?:ngày mốt|mốt)/i.test(userMessage)) {
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    tomorrow.setHours(0, 0, 0, 0);
+    
+    const dayAfterTomorrow = new Date();
+    dayAfterTomorrow.setDate(dayAfterTomorrow.getDate() + 2);
+    dayAfterTomorrow.setHours(0, 0, 0, 0);
+    
+    intent.checkInDate = tomorrow;
+    intent.checkOutDate = dayAfterTomorrow;
+    intent.nights = 1;
+    console.log('✅ parseBookingIntent - Parsed "ngày mai ngày mốt":', { checkIn: tomorrow, checkOut: dayAfterTomorrow });
+  }
+  
   const datePatterns = [
-    /(?:từ|from|check-in|nhận phòng).*?(\d{1,2}\/\d{1,2}(?:\/\d{4})?|hôm nay|ngày mai|ngày kia|today|tomorrow).*?(?:đến|to|check-out|trả phòng).*?(\d{1,2}\/\d{1,2}(?:\/\d{4})?|hôm nay|ngày mai|ngày kia|today|tomorrow)/i,
+    /(?:từ|from|check-in|nhận phòng).*?(\d{1,2}\/\d{1,2}(?:\/\d{4})?|hôm nay|ngày mai|ngày kia|ngày mốt|today|tomorrow).*?(?:đến|to|check-out|trả phòng).*?(\d{1,2}\/\d{1,2}(?:\/\d{4})?|hôm nay|ngày mai|ngày kia|ngày mốt|today|tomorrow)/i,
     /(\d{1,2}\/\d{1,2}(?:\/\d{1,2})?)\s*(?:đến|-|to)\s*(\d{1,2}\/\d{1,2}(?:\/\d{1,2})?)/i
   ];
   
-  for (const pattern of datePatterns) {
-    const match = userMessage.match(pattern);
-    if (match) {
-      intent.checkInDate = parseDateFromText(match[1]);
-      intent.checkOutDate = parseDateFromText(match[2]);
-      if (intent.checkInDate && intent.checkOutDate) {
-        if (intent.checkInDate >= intent.checkOutDate) {
-          // Nếu check-out <= check-in, thêm 1 ngày cho check-out
-          intent.checkOutDate = new Date(intent.checkInDate);
-          intent.checkOutDate.setDate(intent.checkOutDate.getDate() + 1);
+  // Chỉ parse từ patterns nếu chưa có dates
+  if (!intent.checkInDate || !intent.checkOutDate) {
+    for (const pattern of datePatterns) {
+      const match = userMessage.match(pattern);
+      if (match && match[1] && match[2]) {
+        intent.checkInDate = parseDateFromText(match[1]);
+        intent.checkOutDate = parseDateFromText(match[2]);
+        if (intent.checkInDate && intent.checkOutDate) {
+          if (intent.checkInDate >= intent.checkOutDate) {
+            // Nếu check-out <= check-in, thêm 1 ngày cho check-out
+            intent.checkOutDate = new Date(intent.checkInDate);
+            intent.checkOutDate.setDate(intent.checkOutDate.getDate() + 1);
+          }
+          intent.nights = Math.ceil((intent.checkOutDate - intent.checkInDate) / (1000 * 60 * 60 * 24));
         }
-        intent.nights = Math.ceil((intent.checkOutDate - intent.checkInDate) / (1000 * 60 * 60 * 24));
+        break;
       }
-      break;
     }
   }
   
@@ -1888,11 +1935,26 @@ const getUserRateLimitStats = (sessionId) => {
 const getPatternBasedResponse = async (userMessage, context = {}) => {
   const lower = userMessage.toLowerCase().trim();
   
+  // ✅ QUAN TRỌNG: Nếu user nói "chốt phòng đó" và đã có selectedRoom, KHÔNG tìm phòng mới
+  // Skip pattern-based response để xử lý confirm_room_selection ở phần sau
+  const isConfirmingSelectedRoom = lower.includes("chốt phòng") || 
+    lower.includes("đặt phòng đó") || 
+    lower.includes("đặt phòng này") ||
+    (lower.includes("phòng đó") && (lower.includes("chốt") || lower.includes("đặt"))) ||
+    (lower.includes("phòng này") && (lower.includes("chốt") || lower.includes("đặt")));
+  
+  const hasSelectedRoom = !!(context.selectedRoom && (context.selectedRoom._id || context.selectedRoom.id));
+  const hasBookingContextRoomId = !!(context.bookingContext && context.bookingContext.roomId);
+  
+  if (isConfirmingSelectedRoom && (hasSelectedRoom || hasBookingContextRoomId)) {
+    console.log('✅ Skipping pattern-based response - user confirming selected room');
+    return null; // Return null để fallback sang AI xử lý confirm_room_selection
+  }
+  
   // Lấy booking context để kiểm tra hasDates và hasGuests
   const bookingContext = context.bookingContext || {};
   const hasDates = bookingContext.checkInDate && bookingContext.checkOutDate;
   const hasGuests = bookingContext.guests || bookingContext.maxOccupancy;
-  const hasSelectedRoom = !!(context.selectedRoom && (context.selectedRoom._id || context.selectedRoom.id));
   const hasRoomList = context.lastRoomSearchResults && context.lastRoomSearchResults.length > 0;
   const pendingChangeDateChoice = bookingContext.pendingChangeDateChoice || false;
   const changeDateScope = bookingContext.changeDateScope || null;
@@ -3553,23 +3615,19 @@ const getPatternBasedResponse = async (userMessage, context = {}) => {
     }
   }
 
-  // ⚠️ TEMPORARILY DISABLED FOR AI/RAG TESTING - Pattern 1.19: Hỏi về địa điểm gần khách sạn
-  // TODO: Re-enable after AI/RAG testing
+  // Pattern 1.19: DISABLED - Để RAG xử lý với data chi tiết từ knowledge-base
+  // RAG sẽ trả lời với tên quán cụ thể, địa chỉ, giá, khoảng cách từ nearby-restaurants.md, nearby-beaches.md
   /*
   const nearbyPattern = lower.match(/(?:gần|near|nearby|quanh|around).*?(?:khách sạn|hotel)/i) ||
                         lower.match(/(?:địa điểm|attraction|place|nơi).*?(?:gần|near|nearby)/i) ||
                         lower.match(/(?:có gì|có địa điểm|what).*?(?:gần|near|nearby)/i) ||
-                        lower.match(/(?:tham quan|visit|sightseeing|shopping|mua sắm|ăn uống|restaurant)/i);
+                        lower.match(/(?:tham quan|visit|sightseeing|shopping|mua sắm|ăn uống|restaurant)/i) ||
+                        lower.match(/(?:đi chơi|đi đâu|chơi gì|du lịch).*?(?:vũng tàu|ở đâu|được đâu|gần)/i) ||
+                        lower.match(/(?:biển|bãi biển|núi|hải đăng|bãi sau|bãi trước)/i);
   if (nearbyPattern) {
+    context.exploreContext = { topic: 'nearby' };
     return {
-      text: 'Xung quanh khách sạn có nhiều địa điểm thú vị:\n\n' +
-            '🏛️ **Tham quan:** Bảo tàng, di tích lịch sử, công viên\n' +
-            '🍽️ **Ăn uống:** Nhà hàng địa phương, quán cà phê, chợ đêm\n' +
-            '🛍️ **Mua sắm:** Trung tâm thương mại, chợ, cửa hàng lưu niệm\n\n' +
-            'Để xem chi tiết và bản đồ, bạn có thể:\n' +
-            '- Click vào phần "Khám Phá Ngay" trên trang chủ\n' +
-            '- Hoặc hỏi lễ tân khi check-in\n\n' +
-            'Bạn muốn tìm hiểu về địa điểm nào cụ thể? 🗺️',
+      text: '...',
       rooms: null,
       hasRooms: false
     };
@@ -4889,29 +4947,14 @@ const getPatternBasedResponse = async (userMessage, context = {}) => {
       };
     }
     
-    // Nếu đã đủ thông tin: tạo booking trực tiếp (không gọi Gemini)
-    try {
-      const bookingResult = await createBookingFromChat({
-        bookingContext,
-        fullName: bookingContext.fullName,
-        email: bookingContext.email,
-        phone: bookingContext.phone
-      });
-
-      if (bookingResult.error) {
-        return {
-          text: `Xin lỗi, chưa thể tạo đơn đặt phòng: ${bookingResult.error}`,
-          rooms: null,
-          hasRooms: false
-        };
-      }
-
-      const { booking, room } = bookingResult;
-      const bookingLink = createBookingLink({
+    // ✅ CHỈ TẠO LINK ĐẶT PHÒNG - KHÔNG tạo booking trong chat
+    // Booking sẽ được tạo khi user submit form trên FE
+    if (bookingContext.roomId && bookingContext.checkInDate && bookingContext.checkOutDate) {
+      const quickBookingLink = createBookingLink({
         roomId: bookingContext.roomId,
         checkInDate: bookingContext.checkInDate,
         checkOutDate: bookingContext.checkOutDate,
-        roomQuantity: bookingContext.roomQuantity,
+        roomQuantity: bookingContext.roomQuantity || 1,
         guests: bookingContext.guests || bookingContext.maxOccupancy,
         fullName: bookingContext.fullName,
         email: bookingContext.email,
@@ -4920,21 +4963,25 @@ const getPatternBasedResponse = async (userMessage, context = {}) => {
       });
 
       return {
-        text: `✅ Đã tạo đơn đặt phòng #${booking._id.toString().slice(-8)} cho phòng ${room.name} (trạng thái: pending).\n` +
-              `Đã gửi email xác nhận tới ${bookingContext.email}.\n\n` +
-              `Bạn có thể mở link sau để xem/hoàn tất thông tin:\n${bookingLink}`,
+        text: 'Tuyệt vời! Mình đã chuẩn bị link đặt phòng cho bạn với thông tin đã cung cấp.\n\n' +
+              'Vui lòng kiểm tra lại thông tin trên form và nhấn **Đặt phòng / Thanh toán** để hoàn tất. ' +
+              'Sau khi hoàn tất, hệ thống sẽ gửi email xác nhận cho bạn.\n\n' +
+              `📝 [Xem link đặt phòng](booking:${quickBookingLink})`,
         rooms: null,
         hasRooms: false,
-        bookingLink
-      };
-    } catch (createErr) {
-      console.error('❌ Error creating booking from chat:', createErr);
-      return {
-        text: 'Xin lỗi, có lỗi khi tạo đơn đặt phòng. Vui lòng thử lại hoặc cung cấp thông tin lần nữa.',
-        rooms: null,
-        hasRooms: false
+        bookingLink: quickBookingLink
       };
     }
+
+    // Nếu chưa có ngày → hướng dẫn bổ sung
+    return {
+      text: 'Để mình tạo link đặt phòng chính xác, bạn vui lòng cho mình biết thêm:\n' +
+            '- Ngày nhận phòng\n' +
+            '- Ngày trả phòng\n' +
+            '- Số lượng khách (người lớn / trẻ em nếu có)',
+      rooms: null,
+      hasRooms: false
+    };
   }
 
   // Pattern 1.53: Câu hỏi về đề xuất/tư vấn phòng
@@ -9267,21 +9314,45 @@ const getAIResponse = async (userMessage, context = {}, conversationHistory = []
             const confirmRoomLabel = language === 'vi' ? 'CONTEXT: KHÁCH MUỐN CHỐT PHÒNG ĐÃ CHỌN' : 'CONTEXT: CUSTOMER WANTS TO CONFIRM SELECTED ROOM';
             const confirmRoomContext = language === 'vi'
               ? `⚠️⚠️⚠️ QUAN TRỌNG: Khách hàng đã nói "chốt phòng đó" hoặc "đặt phòng đó".\n` +
-                `Bạn PHẢI hiển thị CHI TIẾT phòng đã chọn (tên, giá, loại, sức chứa, view, tiện nghi).\n` +
-                `Bạn PHẢI gửi 2 link cho khách:\n` +
-                `- Link xem chi tiết phòng: [Xem chi tiết phòng](link sẽ được thêm tự động)\n` +
-                `- Link đặt phòng: [Đặt phòng ngay](link sẽ được thêm tự động)\n` +
-                `Bạn KHÔNG được tìm phòng mới hoặc hiển thị danh sách phòng khác.\n` +
-                `QUAN TRỌNG: KHÔNG hỏi thông tin cá nhân (họ tên, email, số điện thoại) trong chat. User sẽ click vào link để đặt phòng trên booking form.\n` +
-                `Tham khảo chatbot-scenarios.md section 1.8 để xử lý đúng cách.`
+                `Bạn PHẢI hiển thị lại phòng đã chọn và TÓM TẮT chi tiết đặt phòng theo ĐÚNG FORMAT sau (thay thế các giá trị trong ngoặc vuông bằng dữ liệu thật):\n\n` +
+                `Tuyệt vời! Chúng tôi đã ghi nhận yêu cầu đặt phòng của quý khách.\n` +
+                `Quý khách đã chọn **[Tên phòng]**.\n\n` +
+                `**Chi tiết đặt phòng của bạn:**\n` +
+                `| Mục | Chi tiết |\n` +
+                `| :--- | :--- |\n` +
+                `| **Tên phòng** | [Tên phòng] |\n` +
+                `| **View** | [View] |\n` +
+                `| **Loại phòng** | [Loại phòng] |\n` +
+                `| **Sức chứa** | Tối đa [Số khách] người |\n` +
+                `| **Ngày nhận phòng** | [dd/MM/yyyy] |\n` +
+                `| **Ngày trả phòng** | [dd/MM/yyyy] ([Số đêm] đêm) |\n` +
+                `| **Giá phòng** | [Giá/đêm] |\n` +
+                `| **Tổng tiền** | **[Tổng tiền]** |\n\n` +
+                `Để hoàn tất việc đặt phòng và điền thông tin cá nhân (Họ tên, Email, SĐT).\n` +
+                `Sau khi điền đầy đủ thông tin vào link **Đặt phòng ngay**, hệ thống sẽ gửi xác nhận booking qua email cho quý khách.\n\n` +
+                `⚠️ Bạn KHÔNG cần tự tạo URL cho link, hệ thống sẽ thêm dòng "📝 [Xem link đặt phòng](booking:...)" sau khi bạn trả lời.\n` +
+                `⚠️ KHÔNG được tìm phòng mới hoặc hiển thị danh sách phòng khác.\n` +
+                `Hãy trả lời NGẮN GỌN, đúng đúng format trên, tiếng Việt, không thêm nội dung khác.`
               : `⚠️⚠️⚠️ IMPORTANT: Customer said "confirm this room" or "book this room".\n` +
-                `You MUST display DETAILED information of the selected room (name, price, type, capacity, view, amenities).\n` +
-                `You MUST send 2 links to the customer:\n` +
-                `- Room detail link: [View Room Details](link will be added automatically)\n` +
-                `- Booking link: [Book Now](link will be added automatically)\n` +
-                `You MUST NOT search for new rooms or display other room lists.\n` +
-                `IMPORTANT: DO NOT ask for personal information (name, email, phone) in chat. User will click the link to book on the booking form.\n` +
-                `Refer to chatbot-scenarios.md section 1.8 for proper handling.`;
+                `You MUST summarise the selected room and booking details using the EXACT FORMAT below (replace brackets with real values):\n\n` +
+                `Great! We have recorded your booking request.\n` +
+                `You have selected **[Room name]**.\n\n` +
+                `**Your booking details:**\n` +
+                `| Item | Details |\n` +
+                `| :--- | :--- |\n` +
+                `| **Room name** | [Room name] |\n` +
+                `| **View** | [View] |\n` +
+                `| **Room type** | [Room type] |\n` +
+                `| **Capacity** | Up to [Guests] people |\n` +
+                `| **Check-in date** | [dd/MM/yyyy] |\n` +
+                `| **Check-out date** | [dd/MM/yyyy] ([Nights] nights) |\n` +
+                `| **Price per night** | [Price/night] |\n` +
+                `| **Total** | **[Total price]** |\n\n` +
+                `To complete your booking and fill in personal information (Full name, Email, Phone).\n` +
+                `After filling in the **Book now** link, the system will send a booking confirmation via email.\n\n` +
+                `⚠️ You DO NOT need to create the URL yourself, the system will add "📝 [View booking link](booking:...)" automatically.\n` +
+                `⚠️ DO NOT search for new rooms or show other room lists.\n` +
+                `Reply SHORT, following this format only.`;
             
             prompt += `\n\n${confirmRoomLabel}:\n${confirmRoomContext}\n\n`;
           }
@@ -11843,193 +11914,38 @@ export const chatWithAI = asyncHandler(async (req, res) => {
     }
     bookingContext.missingFields = missingFields;
 
-    // ✅ Nếu đã có đủ thông tin (phòng, ngày, số khách, giá, thông tin cá nhân) thì tự động xác nhận để tạo booking
-    const readyForAutoBooking = bookingContext.roomId &&
-      bookingContext.checkInDate &&
-      bookingContext.checkOutDate &&
-      bookingContext.guests &&
-      bookingContext.totalPrice &&
-      bookingContext.fullName &&
-      bookingContext.email &&
-      bookingContext.phone;
-    if (readyForAutoBooking && !bookingContext.bookingCreated) {
-      bookingContext.confirmBooking = true;
-    }
+    // ⚠️ TRƯỚC ĐÂY: Nếu đã có đủ thông tin (phòng, ngày, số khách, giá, thông tin cá nhân)
+    // thì tự động set bookingContext.confirmBooking = true để auto tạo booking.
+    // → Điều này dẫn tới việc phòng bị giữ chỗ (booking pending) dù khách CHƯA nói "chốt"/"đặt".
+    // ❌ ĐÃ TẮT: Giờ CHỈ khi user thực sự xác nhận (intent 'confirm_booking') mới được set confirmBooking.
     
     // ✅ Nếu user xác nhận đặt phòng và có đủ thông tin, tạo booking trực tiếp
+    // ❌ ĐÃ VÔ HIỆU HÓA: Không tạo booking trong chat nữa
+    // Booking chỉ được tạo khi user submit form trên FE (nhấn "Đặt phòng / Thanh toán")
+    // Điều này tránh lỗi "phòng đã được đặt" khi user chưa thực sự hoàn tất thanh toán
     if (bookingContext.confirmBooking && bookingContext.roomId && 
         bookingContext.checkInDate && bookingContext.checkOutDate && 
         bookingContext.totalPrice) {
+      console.log('ℹ️ Booking confirmed in chat, nhưng KHÔNG tạo booking trong DB. FE sẽ xử lý khi user submit form.');
       
-      // Kiểm tra xem có đủ thông tin cá nhân không (nếu user chưa đăng nhập)
+      // Chỉ tạo booking link để user click vào form FE
       const hasPersonalInfo = bookingContext.fullName && bookingContext.email && bookingContext.phone;
-      const hasUserId = userId; // User đã đăng nhập
-      
-      if (hasUserId) {
-        // ✅ User đã đăng nhập - tạo booking trực tiếp
-        try {
-          const checkIn = new Date(bookingContext.checkInDate);
-          const checkOut = new Date(bookingContext.checkOutDate);
-          
-          // Kiểm tra phòng có trống không
-          const overlappingBooking = await Booking.findOne({
-            room: bookingContext.roomId,
-            status: { $in: ['pending', 'confirmed'] },
-            $or: [
-              {
-                checkInDate: { $lt: checkOut },
-                checkOutDate: { $gt: checkIn },
-              },
-            ],
-          });
-          
-          if (overlappingBooking) {
-            bookingContext.bookingError = 'Phòng đã được đặt trong khoảng thời gian này. Bạn có muốn tôi tìm phòng khác không?';
-            console.warn('⚠️ Room already booked');
-          } else {
-            // Tạo booking
-            const newBooking = await Booking.create({
-              user: userId,
-              room: bookingContext.roomId,
-              checkInDate: checkIn,
-              checkOutDate: checkOut,
-              totalPrice: bookingContext.totalPrice,
-              roomQuantity: bookingContext.roomQuantity || 1,
-              note: bookingContext.note || '',
-              promotion: bookingContext.promotionId || null,
-              discountAmount: bookingContext.discountAmount || 0,
-              status: 'pending'
-            });
-            
-            // Tăng usageCount của promotion nếu có
-            if (bookingContext.promotionId) {
-              const Promotion = (await import('../Models/PromotionModel.js')).default;
-              await Promotion.findByIdAndUpdate(bookingContext.promotionId, {
-                $inc: { usageCount: 1 }
-              });
-            }
-            
-            bookingContext.bookingId = newBooking._id.toString();
-            bookingContext.bookingCreated = true;
-            bookingContext.needPersonalInfo = false;
-            bookingContext.needLogin = false;
-            
-            // Tạo link thanh toán
-            const baseUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
-            paymentLink = `${baseUrl}/payment?bookingId=${newBooking._id}`;
-            console.log('✅ Booking created successfully:', newBooking._id);
-            console.log('✅ Payment link:', paymentLink);
-          }
-        } catch (error) {
-          console.error('❌ Error creating booking:', error);
-          bookingContext.bookingError = error.message || 'Lỗi khi tạo booking';
-        }
-      } else if (hasPersonalInfo) {
-        // ✅ User chưa đăng nhập nhưng có đủ thông tin cá nhân - tạo user tạm và booking trực tiếp
-        try {
-          const User = (await import('../Models/UserModel.js')).default;
-          const bcrypt = (await import('bcryptjs')).default;
-          
-          // Kiểm tra xem email đã tồn tại chưa
-          let tempUser = await User.findOne({ email: bookingContext.email });
-          
-          if (!tempUser) {
-            // Tạo user tạm với password ngẫu nhiên
-            const randomPassword = Math.random().toString(36).slice(-12) + Math.random().toString(36).slice(-12);
-            const hashedPassword = await bcrypt.hash(randomPassword, 10);
-            
-            tempUser = await User.create({
-              fullName: bookingContext.fullName,
-              email: bookingContext.email,
-              phone: bookingContext.phone,
-              password: hashedPassword,
-              role: 'user'
-            });
-            
-            console.log('✅ Created temporary user:', tempUser._id);
-            bookingContext.tempUserCreated = true;
-            bookingContext.tempUserPassword = randomPassword; // Lưu để có thể gửi cho user sau
-          } else {
-            console.log('✅ User already exists:', tempUser._id);
-            bookingContext.tempUserCreated = false;
-          }
-          
-          // Tạo booking với user tạm
-          const checkIn = new Date(bookingContext.checkInDate);
-          const checkOut = new Date(bookingContext.checkOutDate);
-          
-          // Kiểm tra phòng có trống không
-          const overlappingBooking = await Booking.findOne({
-            room: bookingContext.roomId,
-            status: { $in: ['pending', 'confirmed'] },
-            $or: [
-              {
-                checkInDate: { $lt: checkOut },
-                checkOutDate: { $gt: checkIn },
-              },
-            ],
-          });
-          
-          if (overlappingBooking) {
-            bookingContext.bookingError = 'Phòng đã được đặt trong khoảng thời gian này. Bạn có muốn tôi tìm phòng khác không?';
-            console.warn('⚠️ Room already booked');
-          } else {
-            // Tạo booking
-            const newBooking = await Booking.create({
-              user: tempUser._id,
-              room: bookingContext.roomId,
-              checkInDate: checkIn,
-              checkOutDate: checkOut,
-              totalPrice: bookingContext.totalPrice,
-              roomQuantity: bookingContext.roomQuantity || 1,
-              note: bookingContext.note || '',
-              promotion: bookingContext.promotionId || null,
-              discountAmount: bookingContext.discountAmount || 0,
-              status: 'pending'
-            });
-            
-            // Tăng usageCount của promotion nếu có
-            if (bookingContext.promotionId) {
-              const Promotion = (await import('../Models/PromotionModel.js')).default;
-              await Promotion.findByIdAndUpdate(bookingContext.promotionId, {
-                $inc: { usageCount: 1 }
-              });
-            }
-            
-            bookingContext.bookingId = newBooking._id.toString();
-            bookingContext.bookingCreated = true;
-            bookingContext.tempUserId = tempUser._id.toString();
-            bookingContext.needPersonalInfo = false;
-            bookingContext.needLogin = false;
-            
-            // ✅ Tạo booking link với đầy đủ thông tin để user có thể xem lại và thanh toán
-            const baseUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
-            bookingLink = createBookingLink({
-              roomId: bookingContext.roomId,
-              roomQuantity: bookingContext.roomQuantity || 1,
-              checkInDate: bookingContext.checkInDate,
-              checkOutDate: bookingContext.checkOutDate,
-              guests: bookingContext.guests || bookingContext.maxOccupancy,
-              fullName: bookingContext.fullName,
-              email: bookingContext.email,
-              phone: bookingContext.phone,
-              note: bookingContext.note
-            });
-            
-            // Tạo link thanh toán
-            paymentLink = `${baseUrl}/payment?bookingId=${newBooking._id}`;
-            console.log('✅ Booking created successfully for guest user:', newBooking._id);
-            console.log('✅ Booking link (with full info):', bookingLink);
-            console.log('✅ Payment link:', paymentLink);
-          }
-        } catch (error) {
-          console.error('❌ Error creating booking for guest:', error);
-          bookingContext.bookingError = error.message || 'Lỗi khi tạo booking';
-        }
+      if (hasPersonalInfo) {
+        bookingLink = createBookingLink({
+          roomId: bookingContext.roomId,
+          roomQuantity: bookingContext.roomQuantity || 1,
+          checkInDate: bookingContext.checkInDate,
+          checkOutDate: bookingContext.checkOutDate,
+          guests: bookingContext.guests || bookingContext.maxOccupancy,
+          fullName: bookingContext.fullName,
+          email: bookingContext.email,
+          phone: bookingContext.phone,
+          note: bookingContext.note
+        });
+        console.log('✅ Created booking link (no DB booking yet):', bookingLink);
       } else {
-        // Chưa có đủ thông tin cá nhân, lưu vào context để AI hỏi
         bookingContext.needPersonalInfo = true;
-        console.log('⚠️ Need personal info to create booking');
+        console.log('⚠️ Need personal info to create booking link');
       }
     }
     
@@ -12311,14 +12227,15 @@ export const chatWithAI = asyncHandler(async (req, res) => {
     const removeMarkdownLinks = (text) => {
       if (!text) return text;
       
-      // ✅ QUAN TRỌNG: Loại bỏ các format đặc biệt như "[roomDetailLink: {...}]" hoặc "[bookingLink: {...}]"
-      // Pattern: "[roomDetailLink: {...}]" hoặc "[bookingLink: {...}]" hoặc bất kỳ format tương tự
+      // ✅ QUAN TRỌNG: Loại bỏ các format kỹ thuật nội bộ (roomDetailLink / bookingLink object),
+      // nhưng VẪN GIỮ LẠI nội dung hiển thị cho người dùng (label link).
       let cleaned = text
-        .replace(/\[roomDetailLink:\s*\{[^}]+\}\]/g, '') // Loại bỏ "[roomDetailLink: {...}]"
-        .replace(/\[bookingLink:\s*\{[^}]+\}\]/g, '') // Loại bỏ "[bookingLink: {...}]"
-        .replace(/\[paymentLink:\s*\{[^}]+\}\]/g, '') // Loại bỏ "[paymentLink: {...}]"
-        .replace(/\[.*?Link:\s*\{[^}]+\}\]/g, '') // Loại bỏ bất kỳ format "[...Link: {...}]"
-        // Loại bỏ các dòng text chứa roomDetailLink / bookingLink dạng plain text
+        // Loại bỏ các marker nội bộ dạng "[roomDetailLink: {...}]" / "[bookingLink: {...}]"
+        .replace(/\[roomDetailLink:\s*\{[^}]+\}\]/g, '')
+        .replace(/\[bookingLink:\s*\{[^}]+\}\]/g, '')
+        .replace(/\[paymentLink:\s*\{[^}]+\}\]/g, '')
+        .replace(/\[.*?Link:\s*\{[^}]+\}\]/g, '')
+        // Loại bỏ các đoạn mô tả object thuần kỹ thuật
         .replace(/roomDetailLink\s*:\s*\{[^}]*\}/gi, '')
         .replace(/bookingLink\s*:\s*\{[^}]*\}/gi, '')
         .replace(/paymentLink\s*:\s*\{[^}]*\}/gi, '')
@@ -12329,33 +12246,38 @@ export const chatWithAI = asyncHandler(async (req, res) => {
       // ✅ Loại bỏ các code blocks (ví dụ: ```json ... ```)
       cleaned = cleaned.replace(/```[\s\S]*?```/g, '');
       
-      // Loại bỏ markdown links: [text](url) hoặc 🔍 [text](url) hoặc 📝 [text](url)
-      cleaned = cleaned
-        .replace(/🔍\s*\[([^\]]+)\]\([^)]+\)/g, '') // Loại bỏ "🔍 [Xem chi tiết phòng](url)"
-        .replace(/📝\s*\[([^\]]+)\]\([^)]+\)/g, '') // Loại bỏ "📝 [Đặt phòng ngay](url)"
-        .replace(/💳\s*\[([^\]]+)\]\([^)]+\)/g, '') // Loại bỏ "💳 [Thanh toán ngay](url)"
-        .replace(/👉\s*\[([^\]]+)\]\([^)]+\)/g, '') // Loại bỏ "👉 [View Booking](url)"
-       // .replace(/\[([^\]]+)\]\([^)]+\)/g, '') // Loại bỏ các markdown links khác [text](url)
-       .replace(/\[([^\]]+)\]\(([^)]+)\)/g, (match, linkText, url) => {
-        // Giữ lại booking links và payment links
-        if (url.includes('/booking') || url.includes('bookingId') || url.includes('/payment')) {
-          return match; // Giữ nguyên link
+      // ✅ Chuyển markdown links KHÔNG QUAN TRỌNG thành text thường, 
+      // nhưng GIỮ NGUYÊN các link đặc biệt để FE xử lý:
+      //   - [text](explore)
+      //   - [text](booking:...)
+      //   - [text](payment:...)
+      cleaned = cleaned.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (match, linkText, url) => {
+        const trimmedUrl = url.trim();
+        // Giữ nguyên các link đặc biệt cho FE (ChatMessageItem) xử lý thành nút bấm
+        if (
+          trimmedUrl === 'explore' ||
+          trimmedUrl.startsWith('booking:') ||
+          trimmedUrl.startsWith('payment:')
+        ) {
+          return match;
         }
-        return ''; // Xóa các link khác
+        // Các link markdown khác: chỉ hiển thị text
+        return linkText;
       })
-        .replace(/✅\s*Tôi đã chuẩn bị các link sau cho bạn:\s*/g, '') // Loại bỏ text giới thiệu links
-        .replace(/✅\s*I've prepared the following links for you:\s*/g, '') // Loại bỏ text giới thiệu links (EN)
-        .replace(/✅\s*I've prepared the booking link for you:\s*/g, '') // Loại bỏ text giới thiệu booking link (EN)
-        .replace(/✅\s*Tôi đã chuẩn bị link đặt phòng cho bạn:\s*/g, '') // Loại bỏ text giới thiệu booking link
-        .replace(/\n\n\n+/g, '\n\n') // Loại bỏ nhiều dòng trống liên tiếp
-        .replace(/\n\s*\n\s*\n/g, '\n\n') // Loại bỏ nhiều dòng trống với spaces
+        // Dọn bớt các câu giới thiệu link quá kỹ thuật
+        .replace(/✅\s*Tôi đã chuẩn bị các link sau cho bạn:\s*/g, '')
+        .replace(/✅\s*I've prepared the following links for you:\s*/g, '')
+        .replace(/✅\s*I've prepared the booking link for you:\s*/g, '')
+        .replace(/✅\s*Tôi đã chuẩn bị link đặt phòng cho bạn:\s*/g, '')
+        .replace(/\n\n\n+/g, '\n\n')   // Loại bỏ nhiều dòng trống liên tiếp
+        .replace(/\n\s*\n\s*\n/g, '\n\n')
         .trim();
       
       // Loại bỏ các dòng chỉ chứa emoji hoặc whitespace
-      cleaned = cleaned.split('\n')
+      cleaned = cleaned
+        .split('\n')
         .filter(line => {
           const trimmed = line.trim();
-          // Giữ lại dòng có nội dung thực sự (không chỉ emoji hoặc whitespace)
           return trimmed.length > 0 && !/^[🔍📝💳👉✅\s]+$/.test(trimmed);
         })
         .join('\n');
@@ -12389,9 +12311,11 @@ export const chatWithAI = asyncHandler(async (req, res) => {
       // ✅ Ưu tiên chỉ hiển thị 1 link đặt phòng
       let linkText;
       if (bookingLink) {
+        // FE parse theo format [text](booking:URL)
+        const bookingTextLink = `booking:${bookingLink}`;
         linkText = context.language === 'en'
-          ? `\n\n✅ I've prepared your booking link:\n📝 [View booking link](${bookingLink})`
-          : `\n\n✅ Tôi đã chuẩn bị link đặt phòng cho bạn:\n📝 [Xem link đặt phòng](${bookingLink})`;
+          ? `\n\n✅ I've prepared your booking link:\n📝 [View booking link](${bookingTextLink})`
+          : `\n\n✅ Tôi đã chuẩn bị link đặt phòng cho bạn:\n📝 [Xem link đặt phòng](${bookingTextLink})`;
       } else {
         // Fallback: chỉ có link xem chi tiết phòng
         linkText = context.language === 'en'
@@ -12916,9 +12840,18 @@ export const chatWithAI = asyncHandler(async (req, res) => {
       const selectedRoomForCard = context.selectedRoom || session?.context?.selectedRoom;
       const hasSelectedRoom = selectedRoomForCard || bookingContext?.roomId;
       
-      // ✅ QUAN TRỌNG: Luôn thêm phòng đã chọn vào roomsData khi có bookingContext.roomId
-      // (không cần kiểm tra action nữa vì đã có roomId nghĩa là user đã chọn phòng)
-      if (hasSelectedRoom && bookingContext && bookingContext.roomId) {
+      // ✅ QUAN TRỌNG: Chỉ thêm phòng đã chọn vào roomsData khi user đang hỏi về đặt phòng
+      // KHÔNG hiển thị card khi user hỏi về lịch sử, dịch vụ, địa điểm, chính sách...
+      const isBookingRelatedQuery = bookingIntent?.action && 
+        ['search_room', 'select_room', 'confirm_room_selection', 'book_room', 'check_availability'].includes(bookingIntent.action);
+      const isExploringOtherTopics = context.exploreContext?.topic && 
+        ['history', 'services', 'nearby', 'policy', 'owner', 'about'].includes(context.exploreContext.topic);
+      
+      // Chỉ hiển thị card phòng khi: có phòng đã chọn VÀ (đang hỏi về booking HOẶC không đang explore topic khác)
+      const shouldShowRoomCard = hasSelectedRoom && bookingContext && bookingContext.roomId && 
+        (isBookingRelatedQuery || (!isExploringOtherTopics && !context.exploreContext?.topic));
+      
+      if (shouldShowRoomCard) {
         const selectedRoomId = bookingContext.roomId.toString ? bookingContext.roomId.toString() : String(bookingContext.roomId);
         
         // Kiểm tra xem phòng đã chọn đã có trong roomsData chưa
@@ -13051,11 +12984,17 @@ export const chatWithAI = asyncHandler(async (req, res) => {
       }
     }
     
-    // ✅ CHỈ tạo bookingLink khi user đã chốt đặt (confirm_booking) hoặc có đủ thông tin để đặt phòng
-    // KHÔNG tạo bookingLink khi user chỉ chọn phòng (select_room hoặc confirm_room_selection)
+    // ✅ CHỈ tạo bookingLink khi:
+    // - User đã chốt đặt (confirm_booking), HOẶC
+    // - User chốt phòng (confirm_room_selection) và đã có ngày nhận/trả phòng, HOẶC
+    // - Đã có đầy đủ thông tin cá nhân (auto-booking)
+    const hasDatesForBooking = bookingContext.checkInDate && bookingContext.checkOutDate;
+    const hasFullPersonalInfo = bookingContext.fullName && bookingContext.email && bookingContext.phone;
+    
     const shouldCreateBookingLink = 
-      bookingIntent?.action === 'confirm_booking' || 
-      (bookingContext.checkInDate && bookingContext.checkOutDate && bookingContext.fullName && bookingContext.email && bookingContext.phone);
+      bookingIntent?.action === 'confirm_booking' ||
+      (bookingIntent?.action === 'confirm_room_selection' && hasDatesForBooking) ||
+      (hasDatesForBooking && hasFullPersonalInfo);
     
     if (roomIdForLinks && shouldCreateBookingLink) {
       const roomIdStr = roomIdForLinks.toString ? roomIdForLinks.toString() : String(roomIdForLinks);
@@ -13087,19 +13026,86 @@ export const chatWithAI = asyncHandler(async (req, res) => {
       console.log('✅ Created paymentLinkFinal:', paymentLinkFinal);
     }
 
-    // ✅ Nếu đã có finalBookingLink nhưng trong finalResponseText CHƯA có link đặt phòng
-    // (trường hợp AI fallback chỉ trả về tóm tắt, không có link), thì tự động thêm link ngắn
+    // ✅ Nếu đã có finalBookingLink, tinh chỉnh nội dung text trước khi thêm link
+    // (ÁP DỤNG CHO CÁC TRƯỜNG HỢP KHÁC confirm_room_selection)
+    if (finalBookingLink && typeof finalResponseText === 'string' && bookingIntent?.action !== 'confirm_room_selection') {
+      const bookingTextLink = `booking:${finalBookingLink}`;
+      
+      // 1) Xóa dòng "Xem chi tiết phòng" (hoặc "1. Xem chi tiết phòng") vì FE đã có card + button riêng
+      finalResponseText = finalResponseText.replace(/^\s*(\d+\.\s*)?Xem chi tiết phòng\s*$/gmu, '');
+      
+      // 2) Biến "Đặt phòng ngay" thành link clickable dùng cùng URL với "Xem link đặt phòng"
+      finalResponseText = finalResponseText.replace(/Đặt phòng ngay/g, `[Đặt phòng ngay](${bookingTextLink})`);
+      
+      // 3) Nếu trong finalResponseText CHƯA có link đặt phòng rõ ràng, tự động thêm đoạn ngắn phía dưới
+      if (
+        !finalResponseText.includes('[Xem link đặt phòng]') &&
+        !finalResponseText.includes('[View booking link]')
+      ) {
+        const extraBookingText = context.language === 'en'
+          ? `\n\n✅ You can open your booking form here:\n📝 [View booking link](${bookingTextLink})`
+          : `\n\n✅ Bạn có thể mở form đặt phòng tại đây:\n📝 [Xem link đặt phòng](${bookingTextLink})`;
+        finalResponseText += extraBookingText;
+        console.log('✅ Appended finalBookingLink to response text (fallback).');
+      }
+    }
+    
+    // ✅ TEMPLATE RIÊNG khi khách nói "chốt phòng này" (confirm_room_selection)
+    // Hiển thị tóm tắt chi tiết đặt phòng + 1 link đặt phòng để khách tự điền thông tin cá nhân
     if (
+      bookingIntent?.action === 'confirm_room_selection' &&
       finalBookingLink &&
-      typeof finalResponseText === 'string' &&
-      !finalResponseText.includes('[Xem link đặt phòng]') &&
-      !finalResponseText.includes('[View booking link]')
+      bookingContext.roomId &&
+      bookingContext.checkInDate &&
+      bookingContext.checkOutDate &&
+      bookingContext.totalPrice &&
+      (context.selectedRoom || bookingContext.roomName)
     ) {
-      const extraBookingText = context.language === 'en'
-        ? `\n\n✅ You can open your booking form here:\n📝 [View booking link](${finalBookingLink})`
-        : `\n\n✅ Bạn có thể mở form đặt phòng tại đây:\n📝 [Xem link đặt phòng](${finalBookingLink})`;
-      finalResponseText += extraBookingText;
-      console.log('✅ Appended finalBookingLink to response text (fallback).');
+      const bookingTextLink = `booking:${finalBookingLink}`;
+      const selectedRoom = context.selectedRoom || {};
+      const roomName = bookingContext.roomName || selectedRoom.name || 'Phòng đã chọn';
+      const view = selectedRoom.view || 'N/A';
+      const roomType = selectedRoom.roomType || 'N/A';
+      const capacity = selectedRoom.maxOccupancy || bookingContext.guests || bookingContext.maxOccupancy || 'N/A';
+      const pricePerNight = bookingContext.roomPrice || selectedRoom.pricePerNight || 0;
+      const totalPrice = bookingContext.totalPrice || 0;
+      const nights = bookingContext.nights || (() => {
+        const checkIn = new Date(bookingContext.checkInDate);
+        const checkOut = new Date(bookingContext.checkOutDate);
+        return Math.max(1, Math.ceil((checkOut - checkIn) / (1000 * 60 * 60 * 24)));
+      })();
+      
+      const checkInDate = new Date(bookingContext.checkInDate);
+      const checkOutDate = new Date(bookingContext.checkOutDate);
+      const checkInStr = checkInDate.toLocaleDateString('vi-VN');
+      const checkOutStr = checkOutDate.toLocaleDateString('vi-VN');
+      
+      const pricePerNightText = pricePerNight
+        ? `${pricePerNight.toLocaleString('vi-VN')} VNĐ/đêm`
+        : 'Đang cập nhật';
+      const totalPriceText = totalPrice
+        ? `${totalPrice.toLocaleString('vi-VN')} VNĐ`
+        : 'Đang cập nhật';
+      
+      finalResponseText =
+        `Tuyệt vời! Chúng tôi đã ghi nhận yêu cầu đặt phòng của quý khách.\n` +
+        `Quý khách đã chọn **${roomName}**.\n\n` +
+        `**Chi tiết đặt phòng của bạn:**\n` +
+        `| Mục | Chi tiết |\n` +
+        `| :--- | :--- |\n` +
+        `| **Tên phòng** | ${roomName} |\n` +
+        `| **View** | ${view} |\n` +
+        `| **Loại phòng** | ${roomType} |\n` +
+        `| **Sức chứa** | Tối đa ${capacity} người |\n` +
+        `| **Ngày nhận phòng** | ${checkInStr} |\n` +
+        `| **Ngày trả phòng** | ${checkOutStr} (${nights} đêm) |\n` +
+        `| **Giá phòng** | ${pricePerNightText} |\n` +
+        `| **Tổng tiền** | **${totalPriceText}** |\n\n` +
+        `Để hoàn tất việc đặt phòng và điền thông tin cá nhân (Họ tên, Email, SĐT).\n` +
+        `Sau khi điền đầy đủ thông tin vào link **Đặt phòng ngay**, hệ thống sẽ gửi xác nhận booking qua email cho quý khách.\n\n` +
+        `📝 [Xem link đặt phòng](${bookingTextLink})`;
+      
+      console.log('✅ Applied custom confirm_room_selection template with booking link.');
     }
     
     // ✅ QUAN TRỌNG: Kiểm tra lần cuối trước khi trả response - đảm bảo phòng đã chọn có trong roomsData
@@ -13351,7 +13357,8 @@ export const chatWithAI = asyncHandler(async (req, res) => {
         if (hasDates && hasAllPersonalInfo) {
           finalResponseText = `You selected **${context.selectedRoom.name}**.\nI've kept your personal information from the previous step and updated it for this room.`;
           if (finalBookingLink) {
-            finalResponseText += `\n\n✅ You can open your booking form here:\n📝 [View booking link](${finalBookingLink})`;
+            const bookingTextLink = `booking:${finalBookingLink}`;
+            finalResponseText += `\n\n✅ You can open your booking form here:\n📝 [View booking link](${bookingTextLink})`;
           }
         } else {
           finalResponseText = `You selected **${context.selectedRoom.name}**. \nJust click the \"Book now\" button on the room card. \nTo help you complete the booking faster, please share your **full name, email, and phone number** and our staff will assist you.`;
@@ -13360,7 +13367,8 @@ export const chatWithAI = asyncHandler(async (req, res) => {
         if (hasDates && hasAllPersonalInfo) {
           finalResponseText = `Bạn đã chọn **${context.selectedRoom.name}**, phòng đã sẵn sàng 😊\nMình đã giữ lại thông tin cá nhân bạn cung cấp trước đó và áp dụng cho phòng này.`;
           if (finalBookingLink) {
-            finalResponseText += `\n\n✅ Bạn có thể mở form đặt phòng tại đây:\n📝 [Xem link đặt phòng](${finalBookingLink})`;
+            const bookingTextLink = `booking:${finalBookingLink}`;
+            finalResponseText += `\n\n✅ Bạn có thể mở form đặt phòng tại đây:\n📝 [Xem link đặt phòng](${bookingTextLink})`;
           }
         } else {
           finalResponseText = hasDates
