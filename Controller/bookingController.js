@@ -73,24 +73,24 @@ export const createBooking = asyncHandler(async (req, res) => {
 
     try {
       // Kiểm tra xem phòng đã được đặt trong khoảng thời gian này chưa (với lock)
-      const overlappingBooking = await Booking.findOne({
-        room: room._id,
-        status: { $in: ['pending', 'confirmed'] },
-        $or: [
-          {
-            checkInDate: { $lt: checkOut },
-            checkOutDate: { $gt: checkIn },
-          },
-        ],
+    const overlappingBooking = await Booking.findOne({
+      room: room._id,
+      status: { $in: ['pending', 'confirmed'] },
+      $or: [
+        {
+          checkInDate: { $lt: checkOut },
+          checkOutDate: { $gt: checkIn },
+        },
+      ],
       }).session(session); // Sử dụng session để lock
 
-      if (overlappingBooking) {
+    if (overlappingBooking) {
         await session.abortTransaction();
-        return res.status(400).json({
-          success: false,
-          message: "Phòng đã được đặt trong khoảng thời gian này"
-        });
-      }
+      return res.status(400).json({
+        success: false,
+        message: "Phòng đã được đặt trong khoảng thời gian này"
+      });
+    }
 
       // Validate promotion if provided
       let promotion = null;
@@ -145,12 +145,12 @@ export const createBooking = asyncHandler(async (req, res) => {
 
       // Tạo booking mới (trong transaction)
       const newBooking = await Booking.create([{
-        user: userId,
-        room: room._id,
-        checkInDate: checkIn,
-        checkOutDate: checkOut,
-        totalPrice,
-        note: note || '',
+      user: userId,
+      room: room._id,
+      checkInDate: checkIn,
+      checkOutDate: checkOut,
+      totalPrice,
+      note: note || '',
         status: 'pending',
         promotion: promotionId || null,
         discountAmount: discountAmount || 0
@@ -272,9 +272,9 @@ export const createBooking = asyncHandler(async (req, res) => {
         // Không làm fail API nếu email nội bộ lỗi
       }
 
-      res.status(201).json({
-        success: true,
-        message: "Đặt phòng thành công!",
+    res.status(201).json({
+      success: true,
+      message: "Đặt phòng thành công!",
         booking: finalBooking
       });
     } catch (error) {
@@ -363,7 +363,7 @@ export const getBookingById = asyncHandler(async (req, res) => {
       .populate("user", "fullName email phone")
       .populate("room", "name roomNumber roomType pricePerNight image");
 
-    if (!booking) {
+  if (!booking) {
       return res.status(404).json({
         success: false,
         message: "Không tìm thấy đơn đặt phòng"
@@ -480,11 +480,11 @@ export const getMyBookings = asyncHandler(async (req, res) => {
 // @route   PUT /api/bookings/:id/cancel
 export const cancelBooking = asyncHandler(async (req, res) => {
   try {
-    const bookingId = req.params.id;
+  const bookingId = req.params.id;
     console.log('🔍 cancelBooking - Booking ID:', bookingId);
 
-    const booking = await Booking.findById(bookingId);
-    if (!booking) {
+  const booking = await Booking.findById(bookingId);
+  if (!booking) {
       console.warn('⚠️ cancelBooking - Booking not found:', bookingId);
       return res.status(404).json({
         success: false,
@@ -501,10 +501,10 @@ export const cancelBooking = asyncHandler(async (req, res) => {
         message: "Đơn đặt phòng này đã được hủy trước đó.",
         alreadyCancelled: true
       });
-    }
+  }
 
-    const room = await Room.findById(booking.room);
-    if (!room) {
+  const room = await Room.findById(booking.room);
+  if (!room) {
       console.error('❌ cancelBooking - Room not found for booking:', bookingId, 'Room ID:', booking.room);
       // Vẫn tiếp tục cancel booking dù room không tồn tại (chỉ đổi status, không xóa)
       booking.status = 'cancelled';
@@ -557,8 +557,8 @@ export const cancelBooking = asyncHandler(async (req, res) => {
       if (room.availableRooms !== undefined) {
         room.availableRooms = (room.availableRooms || 0) + 1;
       }
-      room.isAvailable = true;
-      await room.save();
+  room.isAvailable = true;
+  await room.save();
       console.log('✅ cancelBooking - Room updated:', room.name);
     } catch (error) {
       console.error('❌ cancelBooking - Error updating room (non-blocking):', error.message);
@@ -609,12 +609,12 @@ export const cancelBooking = asyncHandler(async (req, res) => {
       // Don't fail the request if email fails
     }
 
-    res.status(200).json({
+  res.status(200).json({
       success: true,
-      message: "Đã huỷ đặt phòng thành công.",
-      roomUpdated: room.name,
-      currentAvailableRooms: room.availableRooms,
-    });
+    message: "Đã huỷ đặt phòng thành công.",
+    roomUpdated: room.name,
+    currentAvailableRooms: room.availableRooms,
+  });
   } catch (error) {
     console.error('❌ cancelBooking - Error:', error);
     res.status(500).json({

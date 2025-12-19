@@ -1,9 +1,9 @@
 import TelegramBot from 'node-telegram-bot-api';
-// import dotenv from 'dotenv';
+import dotenv from 'dotenv';
 import { ChatMessage, ChatSession } from '../Models/ChatModel.js';
 import { getAIResponse, generateSessionId } from './chatController.js';
 import mongoose from 'mongoose';
-// dotenv.config();
+dotenv.config();
 let isMongoConnected = false;
 
 // Khởi tạo Telegram Bot (có thể bật/tắt qua ENV để tránh lỗi 409 khi chạy nhiều instance)
@@ -202,15 +202,10 @@ const handleTelegramMessage = async (msg) => {
       session.messages.push(userMessageDoc._id, botMessageDoc._id);
       await session.save();
   
-      // Format message với rooms nếu có
-            // Format message với rooms nếu có
+      // Format message - responseText đã có đầy đủ thông tin phòng từ Gemini
+      // ✅ FIX: Không thêm formatRoomsForTelegram nữa vì responseText đã có thông tin phòng
+      // Nếu thêm sẽ bị lặp lại 2 lần
             let finalMessage = responseText;
-            if (hasRooms && rooms && rooms.length > 0) {
-              const roomsText = formatRoomsForTelegram(rooms);
-              if (roomsText) {
-                finalMessage += roomsText;
-              }
-            }
       
             // Tạo inline keyboard - chỉ thêm button nếu URL là public (không phải localhost)
             const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
@@ -219,6 +214,7 @@ const handleTelegramMessage = async (msg) => {
             };
       
             // Chỉ thêm button "Truy cập Website" nếu URL không phải localhost
+            // ✅ FIX: Xóa button "Liên hệ Hotline" vì Telegram không hỗ trợ tel: protocol
             const isPublicUrl = frontendUrl && !frontendUrl.includes('localhost') && !frontendUrl.includes('127.0.0.1');
             
             if (isPublicUrl) {
@@ -226,21 +222,10 @@ const handleTelegramMessage = async (msg) => {
                 { 
                   text: '🌐 Truy cập Website', 
                   url: frontendUrl 
-                },
-                { 
-                  text: '📞 Liên hệ Hotline', 
-                  url: 'tel:0901234567' 
-                }
-              ]);
-            } else {
-              // Nếu là localhost, chỉ thêm button Hotline
-              keyboard.inline_keyboard.push([
-                { 
-                  text: '📞 Liên hệ Hotline', 
-                  url: 'tel:0901234567' 
                 }
               ]);
             }
+            // ✅ FIX: Xóa else block vì không còn button nào để thêm cho localhost
       
             // Thêm nút chuyển sang nhân viên nếu chưa ở human mode
             if (session.chatType === 'bot') {
@@ -400,16 +385,13 @@ if (bot) {
           inline_keyboard: []
         };
         
+        // ✅ FIX: Xóa button "Hotline" vì Telegram không hỗ trợ tel: protocol
         if (isPublicUrl) {
           keyboard.inline_keyboard.push([
-            { text: '🌐 Truy cập Website', url: frontendUrl },
-            { text: '📞 Hotline', url: 'tel:0901234567' }
-          ]);
-        } else {
-          keyboard.inline_keyboard.push([
-            { text: '📞 Hotline', url: 'tel:0901234567' }
+            { text: '🌐 Truy cập Website', url: frontendUrl }
           ]);
         }
+        // ✅ FIX: Xóa else block vì không còn button nào để thêm cho localhost
         
         bot.sendMessage(chatId, welcomeMessage, {
           reply_markup: keyboard

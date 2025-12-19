@@ -9,7 +9,7 @@ import emailService from "../services/emailService.js";
 import NearbyPlace from "../Models/NearbyPlaceModel.js";
 import crypto from "crypto";
 import dotenv from "dotenv";
-import { detectLanguage, getLanguage } from "../utils/languageDetector.js";
+// import { detectLanguage, getLanguage } from "../utils/languageDetector.js";
 import googleCalendarService from "../services/googleCalendarService.js";
 import { getHotelConfig, getService, getPolicy, getPayment, getPromotions, getFallbackPrices } from "../utils/hotelConfig.js";
 
